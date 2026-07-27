@@ -375,7 +375,8 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
       <button class="btn" data-ic="upload" onclick="document.getElementById('importFile').click()">Restore backup</button>
     </div>
     <button class="btn" data-ic="send" data-share-backup style="display:none;width:100%;margin-top:8px" onclick="shareBackup()">Send backup to Drive, mail, anywhere</button>
-    <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="importData(event)">
+    <!-- .txt too: sharing may fall back to text/plain when the OS refuses JSON -->
+    <input type="file" id="importFile" accept="application/json,.json,text/plain,.txt" style="display:none" onchange="importData(event)">
     <div class="hint" id="backupHint"></div>
   </div>
 </section>
@@ -1425,10 +1426,24 @@ function markBackedUp(msg){
   sessionStorage.removeItem("fb.backupDismissed");
   toast(msg);
 }
+/* Platforms restrict which file types the OS share sheet will accept, and
+   application/json is not on every allowlist — navigator.canShare() is also
+   more permissive than share() itself, so a type can pass the check and then
+   throw. Try the honest type first, fall back to plain text (same bytes,
+   still re-importable) rather than giving up. */
+const SHARE_TYPES=[{type:"application/json",ext:"json"},{type:"text/plain",ext:"txt"}];
 function canShareFiles(){
   try{
-    return !!(navigator.canShare && navigator.canShare({files:[new File(["{}"],"t.json",{type:"application/json"})]}));
+    return SHARE_TYPES.some(a=>navigator.canShare&&
+      navigator.canShare({files:[new File(["{}"],"t."+a.ext,{type:a.type})]}));
   }catch(e){ return false }
+}
+function disableSharing(err){
+  document.querySelectorAll("[data-share-backup]").forEach(el=>{
+    el.disabled=true;
+    el.textContent="Sharing isn't available on this device";
+    el.title="navigator.share failed: "+((err&&err.name)||"unknown");
+  });
 }
 
 /* Save a copy. On desktop Chrome the file picker lets you choose the folder
@@ -1458,15 +1473,26 @@ async function exportData(){
 /* Phone route: hand the file to the OS share sheet so it can go straight to
    Drive, mail or anywhere else — off the device, which is the whole point. */
 async function shareBackup(){
-  const file=new File([JSON.stringify(backupPayload(),null,2)],backupFilename(),{type:"application/json"});
-  if(!canShareFiles()){toast("Sharing isn't available here — use Save instead");return}
-  try{
-    await navigator.share({files:[file],title:"Fitness Buddy backup"});
-    markBackedUp("Backup sent ✓");
-  }catch(e){
-    if(e&&e.name==="AbortError")return;           // you closed the share sheet
-    toast("Couldn't share that — use Save instead");
+  const text=JSON.stringify(backupPayload(),null,2);
+  const base=backupFilename().replace(/\.json$/,"");
+  let lastErr=null;
+  for(const a of SHARE_TYPES){
+    const file=new File([text],base+"."+a.ext,{type:a.type});
+    if(!(navigator.canShare&&navigator.canShare({files:[file]})))continue;
+    try{
+      await navigator.share({files:[file],title:"Fitness Buddy backup"});
+      markBackedUp("Backup sent ✓");
+      return;
+    }catch(e){
+      if(e&&e.name==="AbortError")return;         // you closed the share sheet
+      lastErr=e;                                  // try the next type
+    }
   }
+  // Nothing worked here. Don't dead-end telling him to go do it himself —
+  // saving the file is the same outcome, so just do it.
+  console.warn("Fitness Buddy: share unavailable",lastErr);
+  disableSharing(lastErr);
+  return exportData();
 }
 /* One tap from the warning banner: prefer getting it off the device. */
 function backupNow(){ return canShareFiles()?shareBackup():exportData() }
