@@ -102,6 +102,19 @@ label.fld{display:block;font-size:13px;color:var(--muted);margin:0 0 6px 2px;fon
 .cue{display:flex;gap:9px;margin:7px 0;font-size:14.5px}
 .cue .b{color:var(--accent);font-weight:800;flex-shrink:0}
 .up-note{background:rgba(255,180,84,.08);border:1px solid rgba(255,180,84,.25);border-radius:12px;padding:12px 13px;margin-top:12px;font-size:13.5px}
+/* protein blocks — a bar of N slots that fill proportionally, so a 42 g dish
+   can land as 1.4 blocks rather than being rounded into a tap count */
+.pblocks{display:flex;gap:7px;margin:11px 0 12px}
+.pblock{flex:1;height:26px;border-radius:8px;background:var(--card2);
+  border:1px solid var(--line);overflow:hidden;position:relative}
+.pblock i{position:absolute;inset:0;width:0;background:var(--accent);
+  border-radius:7px;transition:width .25s ease;display:block}
+.pblock.full i{background:var(--accent)}
+.pmeta{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.pweek{display:flex;gap:5px;margin-top:10px}
+.pweek div{flex:1;text-align:center;font-size:10.5px;color:var(--muted)}
+.pweek b{display:block;height:4px;border-radius:99px;background:var(--line);margin-bottom:4px}
+.pweek b i{display:block;height:100%;border-radius:99px;background:var(--accent2)}
 .up-note b{color:var(--warn)}
 .divider{height:1px;background:var(--line);margin:16px 0}
 .kpi{display:flex;gap:10px;margin-bottom:4px}
@@ -304,6 +317,7 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
   </div>
 
   <div id="weekStrip"></div>
+  <div id="proteinCard"></div>
 
   <label class="fld">Time available</label>
   <div class="seg" id="durSeg" style="margin-bottom:14px">
@@ -397,8 +411,34 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
 
 <!-- ===================== GEAR ===================== -->
 <section class="view" id="view-gear">
-  <h2 style="font-size:20px;margin:8px 0 2px">Gear wishlist</h2>
-  <p class="muted small" style="margin:0 0 14px">Optional upgrades, ranked by how much they'd unlock. Everything in the app already works without these.</p>
+  <h2 style="font-size:20px;margin:8px 0 2px">You &amp; your kit</h2>
+  <p class="muted small" style="margin:0 0 14px">Everything the app assumes about you lives here, so it's yours to correct — no waiting on a new version.</p>
+  <div class="card">
+    <div class="section-title" style="margin-top:0">Profile</div>
+    <div class="grid2">
+      <div><label class="fld">Bodyweight (kg)</label>
+        <input id="pfWeight" type="number" inputmode="decimal" step="0.5" min="30" placeholder="76"></div>
+      <div><label class="fld">Height (cm)</label>
+        <input id="pfHeight" type="number" inputmode="numeric" step="1" min="100" placeholder="183"></div>
+      <div><label class="fld">Age</label>
+        <input id="pfAge" type="number" inputmode="numeric" step="1" min="10" placeholder="32"></div>
+      <div><label class="fld">Protein (g per kg)</label>
+        <input id="pfPerKg" type="number" inputmode="decimal" step="0.1" min="0.8" max="3" placeholder="2.0"></div>
+    </div>
+    <div class="up-note" style="margin-top:12px" id="pfTargetNote"></div>
+    <div class="section-title">Your ceilings</div>
+    <p class="small muted" style="margin:0 0 10px">What you can actually load. The generator stops nudging you up once you're here — change these the day you buy more.</p>
+    <div class="grid2">
+      <div><label class="fld">Dumbbell max (kg per hand)</label>
+        <input id="pfDbMax" type="number" inputmode="decimal" step="0.5" min="1" placeholder="10"></div>
+      <div><label class="fld">Kettlebell max (kg)</label>
+        <input id="pfKbMax" type="number" inputmode="decimal" step="0.5" min="1" placeholder="12"></div>
+    </div>
+    <button class="btn primary" style="width:100%;margin-top:14px" onclick="saveProfile()">Save profile</button>
+  </div>
+
+  <div class="section-title">Gear wishlist</div>
+  <p class="muted small" style="margin:-6px 0 12px">Optional upgrades, ranked by how much they'd unlock. Everything in the app already works without these.</p>
   <div id="gearList"></div>
   <div class="card" style="margin-top:6px">
     <div class="section-title" style="margin-top:0">Your kit</div>
@@ -679,6 +719,16 @@ S.lastSession ??= null;  // generated session memory
 S.goals ??= [];          // {id,kind,...}
 S.weights ??= {};        // {exerciseId: [{kg,ts},...]} — weight memory per exercise
 S.lastBackup ??= null;   // ms timestamp of the last export, null = never backed up
+/* Everything the app used to hardcode about him. Editable in Gear → Profile,
+   so a wrong number is a ten-second fix instead of a new release. */
+S.profile ??= {};
+S.profile.weightKg  ??= null;
+S.profile.heightCm  ??= null;
+S.profile.age       ??= 32;
+S.profile.proteinPerKg ??= 2.0;  // hypertrophy + competitive football sits ~1.6–2.2
+S.profile.dbMaxKg   ??= 10;      // 2 kg handle + 8 kg of plates, per hand
+S.profile.kbMaxKg   ??= 12;
+S.protein ??= {};        // {"YYYY-MM-DD": grams} — grams, not taps, so a dish can add 42
 S.kit=(S.kit&&typeof S.kit==="object"&&Array.isArray(S.kit.off)&&Array.isArray(S.kit.custom))?S.kit:{off:[],custom:[]};
 delete S.coachChat;                             // coach feature removed
 localStorage.removeItem("fitnessBuddy.apiKey"); // clear any previously stored key
@@ -1156,10 +1206,11 @@ function weightSuggestion(id){
   const ex=exById(id);
   const hasKb=!!ex&&ex.kit.includes("kettlebell");
   const kbOnly=hasKb&&!ex.kit.includes("dumbbells");
-  const ceiling=hasKb?12:10;
+  const kbMax=S.profile.kbMaxKg||12, dbMax=S.profile.dbMaxKg||10;
+  const ceiling=hasKb?Math.max(kbMax,kbOnly?kbMax:dbMax):dbMax;
   if(last>=ceiling)return {last,streak,msg:`at your ${ceiling} kg max — add reps or slow the tempo`};
   if(streak>=2){
-    const next=kbOnly?12:Math.min(ceiling,last+1);
+    const next=kbOnly?kbMax:Math.min(ceiling,last+1);   // bells are discrete, plates aren't
     return {last,streak,next};
   }
   return {last,streak};
@@ -1416,6 +1467,101 @@ function removeCustomKit(i){
   S.kit.custom.splice(i,1); save(); renderGear(); toast("Removed from your kit");
 }
 
+/* =========================== PROFILE =========================== */
+function saveProfile(){
+  const num=id=>{const v=parseFloat((document.getElementById(id).value||"").replace(",","."));return isNaN(v)?null:v};
+  const w=num("pfWeight");
+  S.profile.weightKg=w;
+  S.profile.heightCm=num("pfHeight");
+  S.profile.age=num("pfAge")??S.profile.age;
+  S.profile.proteinPerKg=num("pfPerKg")??2.0;
+  S.profile.dbMaxKg=num("pfDbMax")??10;
+  S.profile.kbMaxKg=num("pfKbMax")??12;
+  save(); renderProfile(); renderProtein();
+  toast(w?"Profile saved ✓":"Saved — add your weight to switch on protein");
+}
+function renderProfile(){
+  const p=S.profile,set=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v};
+  set("pfWeight",p.weightKg); set("pfHeight",p.heightCm); set("pfAge",p.age);
+  set("pfPerKg",p.proteinPerKg); set("pfDbMax",p.dbMaxKg); set("pfKbMax",p.kbMaxKg);
+  const n=document.getElementById("pfTargetNote");
+  if(!n)return;
+  if(!p.weightKg){
+    n.innerHTML="<b>Add your bodyweight</b><br><span class='small'>It sets your protein target and switches on the tracker on your home screen.</span>";
+    return;
+  }
+  const t=proteinTarget(), blocks=proteinBlockCount();
+  const bmi=p.heightCm?(p.weightKg/Math.pow(p.heightCm/100,2)).toFixed(1):null;
+  n.innerHTML=`<b>Protein target: ${t} g a day</b><br><span class="small">`+
+    `${p.weightKg} kg × ${p.proteinPerKg} g/kg — shown as ${blocks} blocks of ${PROTEIN_BLOCK} g`+
+    (bmi?` · BMI ${bmi}`:"")+`</span>`;
+}
+
+/* =========================== PROTEIN =========================== */
+/* Stored as grams per day, not tap counts — that way a real dish worth 42 g
+   fills 1.4 blocks instead of being rounded to a whole one. Blocks are just
+   how those grams get drawn. */
+const PROTEIN_BLOCK=30;
+function dayKey(ts){
+  const d=ts?new Date(ts):new Date();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function proteinTarget(){
+  const p=S.profile;
+  if(!p.weightKg)return null;
+  return Math.round(p.weightKg*(p.proteinPerKg||2.0)/5)*5;   // nearest 5 g
+}
+function proteinBlockCount(){
+  const t=proteinTarget();
+  return t?Math.max(1,Math.round(t/PROTEIN_BLOCK)):0;
+}
+function proteinToday(){ return S.protein[dayKey()]||0 }
+function addProtein(g){
+  S.protein[dayKey()]=Math.max(0,proteinToday()+(g||PROTEIN_BLOCK));
+  save(); renderProtein();
+}
+function undoProtein(){
+  const cur=proteinToday();
+  if(!cur){toast("Nothing to undo");return}
+  const next=Math.max(0,cur-PROTEIN_BLOCK);
+  if(next)S.protein[dayKey()]=next; else delete S.protein[dayKey()];
+  save(); renderProtein();
+}
+function renderProtein(){
+  const el=document.getElementById("proteinCard");
+  if(!el)return;
+  const target=proteinTarget();
+  if(!target){
+    el.innerHTML=`<div class="card"><div class="pmeta"><b>Protein</b></div>
+      <p class="small muted" style="margin:8px 0 0">Add your bodyweight in <b>Gear → Profile</b> and this turns into a daily target you can tap through.</p></div>`;
+    return;
+  }
+  const have=proteinToday(), n=proteinBlockCount();
+  const blocks=Array.from({length:n},(_,i)=>{
+    const fill=Math.max(0,Math.min(1,(have-i*PROTEIN_BLOCK)/PROTEIN_BLOCK));
+    return `<div class="pblock${fill>=1?" full":""}"><i style="width:${fill*100}%"></i></div>`;
+  }).join("");
+  // last 7 days, oldest first, so a bad week is visible rather than just today
+  const days=[];
+  for(let i=6;i>=0;i--){
+    const d=new Date(); d.setDate(d.getDate()-i);
+    const g=S.protein[dayKey(d.getTime())]||0;
+    days.push({label:["S","M","T","W","T","F","S"][d.getDay()],pct:Math.min(100,g/target*100),g});
+  }
+  const logged=days.filter(d=>d.g>0);
+  const avg=logged.length?Math.round(logged.reduce((s,d)=>s+d.g,0)/logged.length):0;
+  el.innerHTML=`<div class="card">
+    <div class="pmeta"><b>Protein today</b><span class="small ${have>=target?"":"muted"}">${Math.round(have)} / ${target} g</span></div>
+    <div class="pblocks">${blocks}</div>
+    <div class="grid2">
+      <button class="btn" onclick="addProtein()">+ ${PROTEIN_BLOCK} g</button>
+      <button class="btn ghost" onclick="undoProtein()">Undo</button>
+    </div>
+    <div class="pweek">${days.map(d=>`<div><b><i style="width:${d.pct}%"></i></b>${d.label}</div>`).join("")}</div>
+    <div class="hint">${logged.length?`Last 7 days: ${avg} g average across ${logged.length} logged day${logged.length===1?"":"s"}.`:"Tap a block each time you eat something properly protein-y."}</div>
+  </div>`;
+}
+
 /* =========================== BACKUP / RESTORE ===========================
    Your data lives only in this browser, and mobile browsers evict storage
    from apps you haven't opened in a while. A browser cannot silently write
@@ -1428,7 +1574,8 @@ const DAY_MS = 86400000;
 function hasRealData(){
   return !!((S.log&&S.log.length) || (S.goals&&S.goals.length) ||
             (S.weights&&Object.keys(S.weights).length) ||
-            (S.weekItems&&S.weekItems.length) || (S.weekNotes||"").trim());
+            (S.weekItems&&S.weekItems.length) || (S.weekNotes||"").trim() ||
+            (S.protein&&Object.keys(S.protein).length) || !!(S.profile&&S.profile.weightKg));
 }
 function daysSinceBackup(){
   if(!S.lastBackup) return null;
@@ -1611,11 +1758,19 @@ function importData(ev){
       S.goals=Array.isArray(S.goals)?S.goals:[];
             S.weights=(S.weights&&typeof S.weights==="object"&&!Array.isArray(S.weights))?S.weights:{};
       S.kit=(S.kit&&typeof S.kit==="object"&&Array.isArray(S.kit.off)&&Array.isArray(S.kit.custom))?S.kit:{off:[],custom:[]};
+      // backups predating the profile/protein features have neither — without
+      // these, restoring an older file leaves S.profile undefined and every
+      // render that touches it throws
+      S.protein=(S.protein&&typeof S.protein==="object"&&!Array.isArray(S.protein))?S.protein:{};
+      S.profile=(S.profile&&typeof S.profile==="object"&&!Array.isArray(S.profile))?S.profile:{};
+      S.profile.weightKg??=null; S.profile.heightCm??=null; S.profile.age??=32;
+      S.profile.proteinPerKg??=2.0; S.profile.dbMaxKg??=10; S.profile.kbMaxKg??=12;
       // What's in the browser now matches a file you're holding, so this
       // counts as backed up — regardless of when the file was written.
       S.lastBackup=Date.now();
       save();
       renderTracker(); renderWeek(); renderGear(); renderGroupList(); updateSpark(); renderWeekStrip();
+      renderProfile(); renderProtein(); renderChecklist();
       sessionStorage.removeItem("fb.backupDismissed");
       toast(`Restored ✓ — ${inc.sessions} session${inc.sessions===1?"":"s"}, ${inc.goals} goal${inc.goals===1?"":"s"}`);
     }catch(e){
@@ -1738,7 +1893,7 @@ document.querySelectorAll("[data-ic]").forEach(el=>{
   if(g) el.insertAdjacentHTML("afterbegin", g+(el.textContent.trim()?" ":""));
 });
 renderGroupTabs(); renderGroupList(); renderFocus(); updateSpark(); renderWeekStrip();
-renderBackupBanner(); renderBackupHint();
+renderBackupBanner(); renderBackupHint(); renderProfile(); renderProtein();
 // the share route only exists where the OS offers a share sheet (mostly phones)
 if(canShareFiles())document.querySelectorAll("[data-share-backup]").forEach(el=>{el.style.display=""});
 document.getElementById("genHint").textContent="Tip: log your football & gym sessions in the Tracker — the generator reads them to balance your week.";
