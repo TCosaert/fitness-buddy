@@ -409,6 +409,16 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
   </div>
 </section>
 
+<!-- ===================== FOOD ===================== -->
+<section class="view" id="view-food">
+  <h2 style="font-size:20px;margin:8px 0 2px">What to cook</h2>
+  <p class="muted small" style="margin:0 0 4px" id="foodTarget"></p>
+  <p class="muted small" style="margin:0 0 14px">A day at a time, built from dishes worth cooking rather than chicken and rice. Swap anything you don't fancy; hide anything you'd never make.</p>
+  <button class="btn primary" style="width:100%" onclick="generateDay()">Plan my day</button>
+  <div class="hint" id="foodHidden" style="margin-bottom:10px"></div>
+  <div id="foodList"></div>
+</section>
+
 <!-- ===================== GEAR ===================== -->
 <section class="view" id="view-gear">
   <h2 style="font-size:20px;margin:8px 0 2px">You &amp; your kit</h2>
@@ -472,6 +482,7 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
   <button data-view="week"><span class="ic" data-ic="plan"></span>Plan</button>
   <button data-view="tracker"><span class="ic" data-ic="bars"></span>Tracker</button>
   <button data-view="goals"><span class="ic" data-ic="target"></span>Goals</button>
+  <button data-view="food"><span class="ic" data-ic="idea"></span>Food</button>
   <button data-view="gear"><span class="ic" data-ic="bag"></span>Gear</button>
 </nav>
 
@@ -729,6 +740,10 @@ S.profile.proteinPerKg ??= 2.0;  // hypertrophy + competitive football sits ~1.6
 S.profile.dbMaxKg   ??= 10;      // 2 kg handle + 8 kg of plates, per hand
 S.profile.kbMaxKg   ??= 12;
 S.protein ??= {};        // {"YYYY-MM-DD": grams} — grams, not taps, so a dish can add 42
+S.food ??= {};
+S.food.off ??= [];       // dishes he's rejected — same idea as switching off kit
+S.food.history ??= [];   // recent picks, so the rotation doesn't repeat itself
+S.food.day ??= null;     // the currently planned day, as meal ids
 S.kit=(S.kit&&typeof S.kit==="object"&&Array.isArray(S.kit.off)&&Array.isArray(S.kit.custom))?S.kit:{off:[],custom:[]};
 delete S.coachChat;                             // coach feature removed
 localStorage.removeItem("fitnessBuddy.apiKey"); // clear any previously stored key
@@ -1467,6 +1482,187 @@ function removeCustomKit(i){
   S.kit.custom.splice(i,1); save(); renderGear(); toast("Removed from your kit");
 }
 
+/* =========================== MEALS ===========================
+   A library, same idea as the exercise library: fixed data plus a rotation,
+   so the generator stays offline, instant and deterministic — no API, no key.
+   When he wants something new in here, Claude edits this list and pushes.
+
+   p = protein grams for a normal home portion, kcal likewise. Both are honest
+   estimates, not lab figures — close enough to steer a week, not a cut.
+   veg:true is lacto-ovo vegetarian. Roughly half the library is vegetarian,
+   comfortably above the one-third he asked for, so meat-free days don't
+   repeat themselves. m = hands-on minutes. */
+const MEALS=[
+  // ---------- breakfast ----------
+  {id:"b_skyr",   n:"Skyr with berries, almond butter and toasted seeds", c:"Nordic",   s:"breakfast",p:34,kcal:450,veg:true, m:3},
+  {id:"b_yog",    n:"Greek yoghurt, walnuts and thyme honey",             c:"Greek",    s:"breakfast",p:32,kcal:480,veg:true, m:5},
+  {id:"b_shak",   n:"Shakshuka with feta and two eggs",                   c:"Levantine",s:"breakfast",p:30,kcal:470,veg:true, m:25},
+  {id:"b_menemen",n:"Menemen with beyaz peynir",                          c:"Turkish",  s:"breakfast",p:29,kcal:430,veg:true, m:20},
+  {id:"b_syrniki",n:"Cottage cheese syrniki with sour cherry",            c:"Eastern",  s:"breakfast",p:36,kcal:520,veg:true, m:25},
+  {id:"b_omelette",n:"Omelette aux fines herbes with chèvre",             c:"French",   s:"breakfast",p:34,kcal:460,veg:true, m:10},
+  {id:"b_labneh", n:"Labneh, za'atar, soft eggs and flatbread",           c:"Levantine",s:"breakfast",p:33,kcal:500,veg:true, m:10},
+  {id:"b_gyeran", n:"Gyeran-jjim with rice and kimchi",                   c:"Korean",   s:"breakfast",p:27,kcal:420,veg:true, m:15},
+  {id:"b_tamago", n:"Tamago kake gohan with grilled salmon",              c:"Japanese", s:"breakfast",p:40,kcal:560,veg:false,m:15},
+  {id:"b_congee", n:"Congee with pork and century egg",                   c:"Chinese",  s:"breakfast",p:31,kcal:450,veg:false,m:30},
+
+  // ---------- lunch ----------
+  {id:"l_vitello",n:"Vitello tonnato with rocket",                        c:"Italian",  s:"lunch",p:45,kcal:560,veg:false,m:30},
+  {id:"l_nicoise",n:"Salade niçoise",                                     c:"French",   s:"lunch",p:42,kcal:540,veg:false,m:20},
+  {id:"l_poke",   n:"Tuna poke with edamame and sushi rice",              c:"Japanese", s:"lunch",p:44,kcal:590,veg:false,m:15},
+  {id:"l_bibim",  n:"Bibimbap with bulgogi and a fried egg",              c:"Korean",   s:"lunch",p:46,kcal:650,veg:false,m:30},
+  {id:"l_chirashi",n:"Chirashi don",                                      c:"Japanese", s:"lunch",p:45,kcal:580,veg:false,m:20},
+  {id:"l_tunabean",n:"Tuna and cannellini with red onion and parsley",    c:"Italian",  s:"lunch",p:44,kcal:500,veg:false,m:10},
+  {id:"l_dandan", n:"Dan dan noodles",                                    c:"Chinese",  s:"lunch",p:42,kcal:680,veg:false,m:25},
+  {id:"l_larb",   n:"Larb gai with sticky rice",                          c:"Thai",     s:"lunch",p:44,kcal:520,veg:false,m:20},
+  {id:"l_halloumi",n:"Fattoush with grilled halloumi and chickpeas",      c:"Levantine",s:"lunch",p:40,kcal:580,veg:true, m:20},
+  {id:"l_lentil", n:"Puy lentil, feta and soft-egg salad",                c:"Greek",    s:"lunch",p:39,kcal:520,veg:true, m:20},
+  {id:"l_mapo",   n:"Mapo tofu (silken) with jasmine rice",               c:"Chinese",  s:"lunch",p:38,kcal:560,veg:true, m:25},
+  {id:"l_sabich", n:"Sabich with amba, egg and pickled mango",            c:"Israeli",  s:"lunch",p:35,kcal:590,veg:true, m:20},
+  {id:"l_falafel",n:"Falafel bowl with tahini and pickled turnip",        c:"Levantine",s:"lunch",p:36,kcal:620,veg:true, m:25},
+  {id:"l_socca",  n:"Socca with chèvre, walnut and honey",                c:"French",   s:"lunch",p:34,kcal:540,veg:true, m:20},
+
+  // ---------- dinner ----------
+  {id:"d_galbi",  n:"Galbi-jjim — braised short rib with chestnut",       c:"Korean",   s:"dinner",p:52,kcal:720,veg:false,m:120},
+  {id:"d_souvlaki",n:"Chicken souvlaki with tzatziki and grilled pita",   c:"Greek",    s:"dinner",p:52,kcal:640,veg:false,m:30},
+  {id:"d_basquaise",n:"Poulet basquaise",                                 c:"French",   s:"dinner",p:50,kcal:620,veg:false,m:60},
+  {id:"d_bourg",  n:"Bœuf bourguignon",                                   c:"French",   s:"dinner",p:50,kcal:750,veg:false,m:180},
+  {id:"d_dakgalbi",n:"Dak-galbi with perilla leaves",                     c:"Korean",   s:"dinner",p:50,kcal:680,veg:false,m:35},
+  {id:"d_putt",   n:"Tuna steak with puttanesca",                         c:"Italian",  s:"dinner",p:50,kcal:580,veg:false,m:25},
+  {id:"d_kofta",  n:"Lamb kofta with labneh and sumac onions",            c:"Levantine",s:"dinner",p:48,kcal:680,veg:false,m:35},
+  {id:"d_gigantes",n:"Gigantes plaki with grilled sardines",              c:"Greek",    s:"dinner",p:47,kcal:640,veg:false,m:60},
+  {id:"d_cod",    n:"Miso-marinated black cod with rice",                 c:"Japanese", s:"dinner",p:46,kcal:560,veg:false,m:30},
+  {id:"d_seabass",n:"Steamed sea bass with ginger and spring onion",      c:"Chinese",  s:"dinner",p:46,kcal:480,veg:false,m:25},
+  {id:"d_donburi",n:"Salmon donburi with quick pickles",                  c:"Japanese", s:"dinner",p:46,kcal:600,veg:false,m:20},
+  {id:"d_ragu",   n:"Ragù bolognese with tagliatelle",                    c:"Italian",  s:"dinner",p:44,kcal:720,veg:false,m:150},
+  {id:"d_octopus",n:"Grilled octopus with fava and capers",               c:"Greek",    s:"dinner",p:42,kcal:520,veg:false,m:45},
+  {id:"d_makhani",n:"Paneer makhani with tarka dal",                      c:"Indian",   s:"dinner",p:45,kcal:700,veg:true, m:45},
+  {id:"d_chana",  n:"Chana masala with paneer and raita",                 c:"Indian",   s:"dinner",p:44,kcal:650,veg:true, m:35},
+  {id:"d_harissa",n:"Harissa halloumi and chickpea traybake",             c:"Levantine",s:"dinner",p:44,kcal:660,veg:true, m:40},
+  {id:"d_saag",   n:"Saag paneer with dal tadka",                         c:"Indian",   s:"dinner",p:43,kcal:620,veg:true, m:40},
+  {id:"d_blackbean",n:"Tofu, edamame and black bean stir-fry",            c:"Chinese",  s:"dinner",p:40,kcal:560,veg:true, m:20},
+  {id:"d_sundubu",n:"Sundubu-jjigae with a cracked egg",                  c:"Korean",   s:"dinner",p:38,kcal:480,veg:true, m:25},
+  {id:"d_cavolo", n:"White bean and cavolo nero stew with pecorino",      c:"Italian",  s:"dinner",p:38,kcal:560,veg:true, m:40},
+
+  // ---------- snack ----------
+  {id:"s_sardines",n:"Sardines on sourdough with lemon",                  c:"Italian",  s:"snack",p:28,kcal:340,veg:false,m:5},
+  {id:"s_tuna",   n:"Tuna with cucumber and yuzu kosho",                  c:"Japanese", s:"snack",p:27,kcal:230,veg:false,m:5},
+  {id:"s_mackerel",n:"Smoked mackerel on rye",                            c:"Nordic",   s:"snack",p:26,kcal:320,veg:false,m:5},
+  {id:"s_cottage",n:"Cottage cheese with za'atar and olive oil",          c:"Levantine",s:"snack",p:26,kcal:240,veg:true, m:3},
+  {id:"s_skyr",   n:"Skyr with toasted almonds",                          c:"Nordic",   s:"snack",p:25,kcal:280,veg:true, m:2},
+  {id:"s_pistachio",n:"Greek yoghurt with pistachios and honey",          c:"Greek",    s:"snack",p:24,kcal:300,veg:true, m:2},
+  {id:"s_ricotta",n:"Whipped ricotta with honey and walnuts",             c:"Italian",  s:"snack",p:22,kcal:320,veg:true, m:5},
+  {id:"s_edamame",n:"Edamame with sea salt",                              c:"Japanese", s:"snack",p:20,kcal:220,veg:true, m:5},
+  {id:"s_bar",    n:"Protein bar",                                        c:"—",        s:"snack",p:20,kcal:210,veg:true, m:0},
+  {id:"s_eggs",   n:"Boiled eggs with kimchi",                            c:"Korean",   s:"snack",p:19,kcal:200,veg:true, m:10},
+];
+const SLOTS=["breakfast","lunch","dinner","snack"];
+const SLOT_LABEL={breakfast:"Breakfast",lunch:"Lunch",dinner:"Dinner",snack:"Snack"};
+const mealById=id=>MEALS.find(m=>m.id===id);
+function mealPool(slot){
+  const off=S.food.off||[];
+  return MEALS.filter(m=>m.s===slot&&!off.includes(m.id));
+}
+/* Sample a few hundred candidate days and keep the best. Cheaper to write and
+   easier to reason about than a solver, and instant at this library size.
+   Score punishes missing the protein target, a day with no vegetarian main,
+   and eating four dishes from the same cuisine. */
+function pickDay(){
+  const target=proteinTarget()||150;
+  const recent=new Set((S.food.history||[]).slice(-14));
+  let best=null;
+  for(let i=0;i<500;i++){
+    const day=[];
+    for(const s of SLOTS){
+      const pool=mealPool(s);
+      if(!pool.length){day.push(null);continue}
+      const fresh=pool.filter(m=>!recent.has(m.id));
+      const from=fresh.length?fresh:pool;
+      day.push(from[Math.floor(Math.random()*from.length)]);
+    }
+    if(day.some(m=>!m))return null;
+    const total=day.reduce((a,m)=>a+m.p,0);
+    const vegMain=day.some(m=>m.veg&&(m.s==="lunch"||m.s==="dinner"));
+    let score=Math.abs(total-target);
+    if(!vegMain)score+=22;
+    score+=(SLOTS.length-new Set(day.map(m=>m.c)).size)*5;
+    if(!best||score<best.score)best={day,total,score};
+  }
+  return best;
+}
+function generateDay(){
+  const best=pickDay();
+  if(!best){toast("Too many dishes hidden — turn some back on");return}
+  S.food.day=best.day.map(m=>m.id);
+  S.food.history=[...(S.food.history||[]),...S.food.day].slice(-40);
+  save(); renderFood();
+  toast("Day planned ✓");
+}
+/* Swap a single slot without disturbing the rest — the usual case is "yes but
+   not that dinner", not "start again". */
+function rerollSlot(slot){
+  if(!S.food.day)return;
+  const idx=SLOTS.indexOf(slot);
+  const cur=S.food.day[idx];
+  const pool=mealPool(slot).filter(m=>m.id!==cur);
+  if(!pool.length){toast("Nothing else in that slot");return}
+  const pick=pool[Math.floor(Math.random()*pool.length)];
+  S.food.day[idx]=pick.id;
+  S.food.history=[...(S.food.history||[]),pick.id].slice(-40);
+  save(); renderFood();
+}
+function hideMeal(id){
+  S.food.off=[...(S.food.off||[]),id];
+  const i=(S.food.day||[]).indexOf(id);
+  save();
+  if(i>=0)rerollSlot(SLOTS[i]); else renderFood();
+  toast("Hidden — it won't come up again");
+}
+function resetHidden(){ S.food.off=[]; save(); renderFood(); toast("All dishes back in") }
+function eatMeal(id){
+  const m=mealById(id); if(!m)return;
+  addProtein(m.p);
+  toast("+"+m.p+" g logged");
+}
+function renderFood(){
+  const el=document.getElementById("foodList");
+  if(!el)return;
+  const target=proteinTarget();
+  const tgt=document.getElementById("foodTarget");
+  if(tgt) tgt.innerHTML=target
+    ? `Aiming at <b>${target} g</b> a day. Tap <b>Ate this</b> and it fills your blocks.`
+    : `Set your bodyweight in <b>Gear → Profile</b> for a real target — planning still works without it.`;
+  const off=(S.food.off||[]).length;
+  const hid=document.getElementById("foodHidden");
+  if(hid) hid.innerHTML=off?`${off} dish${off===1?"":"es"} hidden · <a href="#" onclick="resetHidden();return false">show all again</a>`:"";
+  if(!S.food.day||!S.food.day.length){
+    el.innerHTML=`<div class="empty">No day planned yet.<br>Tap <b>Plan my day</b> above.</div>`;
+    return;
+  }
+  const meals=S.food.day.map(mealById).filter(Boolean);
+  const total=meals.reduce((a,m)=>a+m.p,0);
+  const kcal=meals.reduce((a,m)=>a+m.kcal,0);
+  const vegN=meals.filter(m=>m.veg).length;
+  el.innerHTML=`
+    <div class="advice" style="margin-bottom:12px">
+      <b>${total} g protein</b> · ~${kcal} kcal · ${vegN}/${meals.length} vegetarian
+      ${target?` · ${total>=target?"on target":`${target-total} g short — add a snack`}`:""}
+    </div>`+
+    meals.map(m=>`
+    <div class="card" style="margin-bottom:10px">
+      <div class="pmeta">
+        <span class="pill">${SLOT_LABEL[m.s]}</span>
+        <span class="small muted">${m.p} g · ${m.m?m.m+" min":"no prep"}</span>
+      </div>
+      <div style="font-weight:600;margin:8px 0 4px">${m.n}</div>
+      <div class="small muted" style="margin-bottom:10px">${m.c}${m.veg?" · vegetarian":""} · ~${m.kcal} kcal</div>
+      <div class="grid2">
+        <button class="btn sm" onclick="eatMeal('${m.id}')">Ate this (+${m.p} g)</button>
+        <button class="btn sm ghost" onclick="rerollSlot('${m.s}')">Swap</button>
+      </div>
+      <button class="btn sm ghost" style="width:100%;margin-top:8px" onclick="hideMeal('${m.id}')">Not for me</button>
+    </div>`).join("");
+}
+
 /* =========================== PROFILE =========================== */
 function saveProfile(){
   const num=id=>{const v=parseFloat((document.getElementById(id).value||"").replace(",","."));return isNaN(v)?null:v};
@@ -1765,12 +1961,16 @@ function importData(ev){
       S.profile=(S.profile&&typeof S.profile==="object"&&!Array.isArray(S.profile))?S.profile:{};
       S.profile.weightKg??=null; S.profile.heightCm??=null; S.profile.age??=32;
       S.profile.proteinPerKg??=2.0; S.profile.dbMaxKg??=10; S.profile.kbMaxKg??=12;
+      S.food=(S.food&&typeof S.food==="object"&&!Array.isArray(S.food))?S.food:{};
+      S.food.off=Array.isArray(S.food.off)?S.food.off:[];
+      S.food.history=Array.isArray(S.food.history)?S.food.history:[];
+      S.food.day=Array.isArray(S.food.day)?S.food.day:null;
       // What's in the browser now matches a file you're holding, so this
       // counts as backed up — regardless of when the file was written.
       S.lastBackup=Date.now();
       save();
       renderTracker(); renderWeek(); renderGear(); renderGroupList(); updateSpark(); renderWeekStrip();
-      renderProfile(); renderProtein(); renderChecklist();
+      renderProfile(); renderProtein(); renderChecklist(); renderFood();
       sessionStorage.removeItem("fb.backupDismissed");
       toast(`Restored ✓ — ${inc.sessions} session${inc.sessions===1?"":"s"}, ${inc.goals} goal${inc.goals===1?"":"s"}`);
     }catch(e){
@@ -1893,7 +2093,7 @@ document.querySelectorAll("[data-ic]").forEach(el=>{
   if(g) el.insertAdjacentHTML("afterbegin", g+(el.textContent.trim()?" ":""));
 });
 renderGroupTabs(); renderGroupList(); renderFocus(); updateSpark(); renderWeekStrip();
-renderBackupBanner(); renderBackupHint(); renderProfile(); renderProtein();
+renderBackupBanner(); renderBackupHint(); renderProfile(); renderProtein(); renderFood();
 // the share route only exists where the OS offers a share sheet (mostly phones)
 if(canShareFiles())document.querySelectorAll("[data-share-backup]").forEach(el=>{el.style.display=""});
 document.getElementById("genHint").textContent="Tip: log your football & gym sessions in the Tracker — the generator reads them to balance your week.";
