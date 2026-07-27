@@ -383,6 +383,7 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
     <div class="box"><div class="n" id="kGym">0</div><div class="l">Gym</div></div>
   </div>
   <div class="advice" id="weekAdvice"></div>
+  <div id="crossRef"></div>
   <div class="section-title">Goals</div>
   <div id="goalsList"></div>
   <div class="section-title">Log a session</div>
@@ -416,7 +417,10 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
   <h2 style="font-size:20px;margin:8px 0 2px">What to cook</h2>
   <p class="muted small" style="margin:0 0 4px" id="foodTarget"></p>
   <p class="muted small" style="margin:0 0 14px">A day at a time, built from dishes worth cooking rather than chicken and rice. Swap anything you don't fancy; hide anything you'd never make.</p>
-  <button class="btn primary" style="width:100%" onclick="generateDay()">Plan my day</button>
+  <div class="grid2">
+    <button class="btn primary" onclick="generateDay()">Plan my day</button>
+    <button class="btn" onclick="generateDay({vegOnly:true})">Vegetarian day</button>
+  </div>
   <div class="hint" id="foodHidden" style="margin-bottom:10px"></div>
   <div id="foodList"></div>
 </section>
@@ -752,6 +756,7 @@ S.food ??= {};
 S.food.off ??= [];       // dishes he's rejected — same idea as switching off kit
 S.food.history ??= [];   // recent picks, so the rotation doesn't repeat itself
 S.food.day ??= null;     // the currently planned day, as meal ids
+S.food.usual ??= {breakfast:"b_skyroats"};   // his default in a slot; skyr+oats is the stated standard
 S.kit=(S.kit&&typeof S.kit==="object"&&Array.isArray(S.kit.off)&&Array.isArray(S.kit.custom))?S.kit:{off:[],custom:[]};
 delete S.coachChat;                             // coach feature removed
 localStorage.removeItem("fitnessBuddy.apiKey"); // clear any previously stored key
@@ -1396,8 +1401,45 @@ function renderWeekStrip(){
     </div>`;
 }
 function delLog(ts){S.log=S.log.filter(l=>l.ts!==ts);save();renderTracker();updateSpark()}
+/* Protein logged so far in the current training week (Monday start), so it
+   lines up with the session count rather than a rolling 7 days. */
+function weekProtein(){
+  const wk=weekKey(), days=[];
+  const d=new Date(); d.setHours(0,0,0,0);
+  for(let i=0;i<7;i++){
+    const x=new Date(d); x.setDate(d.getDate()-i);
+    if(weekKey(x.getTime())!==wk)break;
+    const g=S.protein[dayKey(x.getTime())]||0;
+    if(g)days.push(g);
+  }
+  const total=days.reduce((a,b)=>a+b,0);
+  return {days:days.length,total,avg:days.length?Math.round(total/days.length):0};
+}
+/* The whole argument for nutrition living in this app: neither number means
+   much alone. Sessions without protein won't build; protein without sessions
+   is just eating. Name whichever one is actually the gap, once, without
+   turning it into a lecture. */
+function renderCrossRef(){
+  const el=document.getElementById("crossRef");
+  if(!el)return;
+  const wk=thisWeekLog();
+  const sessions=wk.filter(l=>l.type==="gym"||isLegCardio(l.type)).length;
+  const p=weekProtein(), target=proteinTarget();
+  if(!sessions&&!p.days){el.innerHTML="";return}   // nothing to say yet
+  const sessionsOk=sessions>=3;
+  const proteinOk=target?p.avg>=target*0.9:null;
+  let line;
+  if(!p.days) line=`<b>${sessions} session${sessions===1?"":"s"}</b> this week, no protein logged yet — the blocks on the home screen take one tap.`;
+  else if(!sessions) line=`Averaging <b>${p.avg} g</b> a day across ${p.days} day${p.days===1?"":"s"}, but <b>no sessions logged</b>. Protein supports training you've done — on its own it's just eating.`;
+  else if(sessionsOk&&proteinOk!==false) line=`<b>${sessions} sessions</b> and <b>${p.avg} g</b> a day. Both where they should be — this is the week that builds something.`;
+  else if(sessionsOk&&proteinOk===false) line=`<b>${sessions} sessions</b> in, but protein is averaging <b>${p.avg} g</b> against ${target} g. The training's there; food is the gap.`;
+  else if(proteinOk) line=`Protein's solid at <b>${p.avg} g</b>, but only <b>${sessions} session${sessions===1?"":"s"}</b> logged. Sessions are the limiter, not food.`;
+  else line=`<b>${sessions} session${sessions===1?"":"s"}</b> and <b>${p.avg} g</b> a day. Both light so far — sessions first, food follows.`;
+  el.innerHTML=`<div class="advice" style="margin-top:-4px">${line}</div>`;
+}
 function renderTracker(){
   renderBackupHint();   // day count drifts, so refresh it whenever the screen is shown
+  renderCrossRef();
   const wk=thisWeekLog();
   const cardio=wk.filter(l=>isLegCardio(l.type)).length;
   const gym=wk.filter(l=>l.type==="gym").length;
@@ -1531,6 +1573,17 @@ const MEALS=[
   {id:"l_falafel",n:"Falafel bowl with tahini and pickled turnip",        c:"Levantine",s:"lunch",p:36,kcal:620,veg:true, m:25},
   {id:"l_socca",  n:"Socca with chèvre, walnut and honey",                c:"French",   s:"lunch",p:34,kcal:540,veg:true, m:20},
 
+  /* Work canteen lunches. Excluded from normal generation (work:true) since
+     they aren't things he cooks — reachable only via the "Work lunch" picker.
+     A single average would be useless here: "salad" spans 8–35 g depending on
+     what's in it. He always knows what the protein was, so ask that instead. */
+  {id:"w_meat",   n:"Sandwich with chicken, ham or beef",                 c:"Work",     s:"lunch",p:28,kcal:480,veg:false,m:0,work:true},
+  {id:"w_fish",   n:"Sandwich with tuna, salmon or mackerel",             c:"Work",     s:"lunch",p:30,kcal:500,veg:false,m:0,work:true},
+  {id:"w_cheese", n:"Sandwich with cheese or egg",                        c:"Work",     s:"lunch",p:20,kcal:450,veg:true, m:0,work:true},
+  {id:"w_saladp", n:"Salad with chicken, tuna or egg",                    c:"Work",     s:"lunch",p:32,kcal:420,veg:false,m:0,work:true},
+  {id:"w_saladv", n:"Salad, mostly vegetables",                           c:"Work",     s:"lunch",p:12,kcal:280,veg:true, m:0,work:true},
+  {id:"w_soup",   n:"Soup with bread",                                    c:"Work",     s:"lunch",p:12,kcal:340,veg:true, m:0,work:true},
+
   // ---------- dinner ----------
   {id:"d_galbi",  n:"Galbi-jjim — braised short rib with chestnut",       c:"Korean",   s:"dinner",p:52,kcal:720,veg:false,m:120},
   {id:"d_souvlaki",n:"Chicken souvlaki with tzatziki and grilled pita",   c:"Greek",    s:"dinner",p:52,kcal:640,veg:false,m:30},
@@ -1578,9 +1631,11 @@ function todaySlots(d){
     : ["lunch","snack","dinner"];
 }
 const mealById=id=>MEALS.find(m=>m.id===id);
-function mealPool(slot,quickOnly){
+function mealPool(slot,quickOnly,opts){
+  opts=opts||{};
   const off=S.food.off||[];
-  const pool=MEALS.filter(m=>m.s===slot&&!off.includes(m.id));
+  let pool=MEALS.filter(m=>m.s===slot&&!off.includes(m.id)&&!m.work);
+  if(opts.vegOnly)pool=pool.filter(m=>m.veg);
   // A weekday breakfast has to survive a workday morning — a 25-minute
   // shakshuka on a Tuesday is a dish he'd skip, which defeats the point.
   if(quickOnly){
@@ -1594,7 +1649,8 @@ function isWeekday(){ const d=new Date().getDay(); return d>=1&&d<=5 }
    easier to reason about than a solver, and instant at this library size.
    Score punishes missing the protein target, a day with no vegetarian main,
    and eating four dishes from the same cuisine. */
-function pickDay(){
+function pickDay(opts){
+  opts=opts||{};
   const target=proteinTarget()||150;
   const slots=todaySlots();
   const recent=new Set((S.food.history||[]).slice(-14));
@@ -1602,7 +1658,7 @@ function pickDay(){
   for(let i=0;i<500;i++){
     const day=[];
     for(const s of slots){
-      const pool=mealPool(s,s==="breakfast"&&isWeekday());
+      const pool=mealPool(s,s==="breakfast"&&isWeekday(),opts);
       if(!pool.length){day.push(null);continue}
       const fresh=pool.filter(m=>!recent.has(m.id));
       const from=fresh.length?fresh:pool;
@@ -1612,19 +1668,20 @@ function pickDay(){
     const total=day.reduce((a,m)=>a+m.p,0);
     const vegMain=day.some(m=>m.veg&&(m.s==="lunch"||m.s==="dinner"));
     let score=Math.abs(total-target);
-    if(!vegMain)score+=22;
+    if(!vegMain&&!opts.vegOnly)score+=22;   // already all-veg, nothing to nudge
     score+=(slots.length-new Set(day.map(m=>m.c)).size)*5;
     if(!best||score<best.score)best={day,total,score};
   }
   return best;
 }
-function generateDay(){
-  const best=pickDay();
-  if(!best){toast("Too many dishes hidden — turn some back on");return}
+function generateDay(opts){
+  opts=opts||{};
+  const best=pickDay(opts);
+  if(!best){toast(opts.vegOnly?"Not enough vegetarian dishes left":"Too many dishes hidden — turn some back on");return}
   S.food.day=best.day.map(m=>m.id);
   S.food.history=[...(S.food.history||[]),...S.food.day].slice(-40);
   save(); renderFood();
-  toast("Day planned ✓");
+  toast(opts.vegOnly?"Vegetarian day planned ✓":"Day planned ✓");
 }
 /* Swap a single slot without disturbing the rest — the usual case is "yes but
    not that dinner", not "start again". */
@@ -1640,6 +1697,41 @@ function rerollAt(idx){
   S.food.history=[...(S.food.history||[]),pick.id].slice(-40);
   save(); renderFood();
 }
+/* A "usual" is the dish he defaults to in a slot — his breakfast is always
+   going to be skyr and oats, so make that one tap rather than rerolling until
+   it shows up. Generation still varies; this is the override. */
+function setUsual(id,slot){
+  S.food.usual=S.food.usual||{};
+  if(S.food.usual[slot]===id){delete S.food.usual[slot];toast("No longer your usual")}
+  else{S.food.usual[slot]=id;toast("Set as your usual "+slot)}
+  save(); renderFood();
+}
+function useUsual(idx){
+  const cur=mealById((S.food.day||[])[idx]); if(!cur)return;
+  const id=(S.food.usual||{})[cur.s]; if(!id)return;
+  S.food.day[idx]=id; save(); renderFood();
+}
+/* Work lunches can't be guessed with one average — "salad" is anywhere from
+   8 g to 35 g. He always knows what the protein in it was, so ask that. */
+function workLunchSheet(idx){
+  const opts=MEALS.filter(m=>m.work&&m.s==="lunch");
+  document.getElementById("sheet").innerHTML=`
+    <div class="grab"></div>
+    <h2 style="font-size:21px;margin:6px 0 4px">Lunch at work</h2>
+    <p class="small muted" style="margin:0 0 12px">Pick whatever's closest. These are honest estimates for a normal portion — near enough to steer the day, and better than guessing one average for everything.</p>
+    ${opts.map(m=>`<button class="btn" style="width:100%;margin-bottom:8px;justify-content:space-between"
+        onclick="pickWorkLunch(${idx},'${m.id}')">
+        <span>${m.n}</span><span class="small muted">${m.p} g</span></button>`).join("")}
+    <button class="btn ghost" style="width:100%;margin-top:6px" onclick="closeSheet()">Cancel</button>`;
+  document.getElementById("overlay").classList.add("show");
+  document.body.style.overflow="hidden";
+}
+function pickWorkLunch(idx,id){
+  if(!S.food.day)S.food.day=[];
+  S.food.day[idx]=id; save(); closeSheet(); renderFood();
+  const m=mealById(id);
+  toast(m.p<20?`${m.p} g — light, you'll want a bigger snack`:`Lunch set — ${m.p} g`);
+}
 function hideMeal(id,idx){
   S.food.off=[...(S.food.off||[]),id];
   save();
@@ -1651,6 +1743,16 @@ function eatMeal(id){
   const m=mealById(id); if(!m)return;
   addProtein(m.p);
   toast("+"+m.p+" g logged");
+}
+/* Either "swap to my usual" or "make this my usual", never both — whichever
+   is useful for the dish currently in that slot. */
+function usualFor(m,i){
+  const u=(S.food.usual||{})[m.s];
+  if(u&&u!==m.id){
+    const um=mealById(u);
+    if(um)return `<button class="btn sm ghost" onclick="useUsual(${i})">My usual: ${um.n.split(" with ")[0]}</button>`;
+  }
+  return `<button class="btn sm ghost" onclick="setUsual('${m.id}','${m.s}')">${u===m.id?"✓ Your usual":"Set as usual"}</button>`;
 }
 function renderFood(){
   const el=document.getElementById("foodList");
@@ -1689,7 +1791,11 @@ function renderFood(){
         <button class="btn sm" onclick="eatMeal('${m.id}')">Ate this (+${m.p} g)</button>
         <button class="btn sm ghost" onclick="rerollAt(${i})">Swap</button>
       </div>
-      <button class="btn sm ghost" style="width:100%;margin-top:8px" onclick="hideMeal('${m.id}',${i})">Not for me</button>
+      <div class="wrap" style="margin-top:8px;gap:6px">
+        ${usualFor(m,i)}
+        ${m.s==="lunch"?`<button class="btn sm ghost" onclick="workLunchSheet(${i})">Lunch at work</button>`:""}
+        <button class="btn sm ghost" onclick="hideMeal('${m.id}',${i})">Not for me</button>
+      </div>
     </div>`).join("");
 }
 
@@ -1746,14 +1852,14 @@ function proteinBlockCount(){
 function proteinToday(){ return S.protein[dayKey()]||0 }
 function addProtein(g){
   S.protein[dayKey()]=Math.max(0,proteinToday()+(g||PROTEIN_BLOCK));
-  save(); renderProtein();
+  save(); renderProtein(); renderCrossRef();
 }
 function undoProtein(){
   const cur=proteinToday();
   if(!cur){toast("Nothing to undo");return}
   const next=Math.max(0,cur-PROTEIN_BLOCK);
   if(next)S.protein[dayKey()]=next; else delete S.protein[dayKey()];
-  save(); renderProtein();
+  save(); renderProtein(); renderCrossRef();
 }
 function renderProtein(){
   const el=document.getElementById("proteinCard");
@@ -1997,6 +2103,7 @@ function importData(ev){
       S.food.off=Array.isArray(S.food.off)?S.food.off:[];
       S.food.history=Array.isArray(S.food.history)?S.food.history:[];
       S.food.day=Array.isArray(S.food.day)?S.food.day:null;
+      S.food.usual=(S.food.usual&&typeof S.food.usual==="object"&&!Array.isArray(S.food.usual))?S.food.usual:{};
       // What's in the browser now matches a file you're holding, so this
       // counts as backed up — regardless of when the file was written.
       S.lastBackup=Date.now();
@@ -2159,7 +2266,7 @@ document.querySelectorAll("[data-ic]").forEach(el=>{
 });
 renderGroupTabs(); renderGroupList(); renderFocus(); updateSpark(); renderWeekStrip();
 renderBackupBanner(); renderBackupHint(); renderProfile(); renderProtein(); renderFood();
-renderGoals(); renderGoalSetup();
+renderGoals(); renderGoalSetup(); renderCrossRef();
 // the share route only exists where the OS offers a share sheet (mostly phones)
 if(canShareFiles())document.querySelectorAll("[data-share-backup]").forEach(el=>{el.style.display=""});
 document.getElementById("genHint").textContent="Tip: log your football & gym sessions in the Tracker — the generator reads them to balance your week.";
