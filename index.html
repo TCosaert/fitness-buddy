@@ -383,6 +383,8 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
     <div class="box"><div class="n" id="kGym">0</div><div class="l">Gym</div></div>
   </div>
   <div class="advice" id="weekAdvice"></div>
+  <div class="section-title">Goals</div>
+  <div id="goalsList"></div>
   <div class="section-title">Log a session</div>
   <div class="grid2">
     <button class="btn" data-ic="dumbbell" onclick="logGymManual()">Gym</button>
@@ -420,9 +422,9 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
 </section>
 
 <!-- ===================== GEAR ===================== -->
-<section class="view" id="view-gear">
-  <h2 style="font-size:20px;margin:8px 0 2px">You &amp; your kit</h2>
-  <p class="muted small" style="margin:0 0 14px">Everything the app assumes about you lives here, so it's yours to correct — no waiting on a new version.</p>
+<section class="view" id="view-settings">
+  <h2 style="font-size:20px;margin:8px 0 2px">Settings</h2>
+  <p class="muted small" style="margin:0 0 14px">Everything the app assumes about you lives here, so it's yours to correct — no waiting on a new version. Progress shows up in the Tracker.</p>
   <div class="card">
     <div class="section-title" style="margin-top:0">Profile</div>
     <div class="grid2">
@@ -444,7 +446,26 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
       <div><label class="fld">Kettlebell max (kg)</label>
         <input id="pfKbMax" type="number" inputmode="decimal" step="0.5" min="1" placeholder="12"></div>
     </div>
+    <div class="section-title">Eating pattern</div>
+    <div class="log-item" style="margin-bottom:0">
+      <div class="check" id="pfBfChk" onclick="toggleWeekdayBreakfast()">✓</div>
+      <div style="flex:1">Breakfast on weekdays
+        <div class="small muted">Off by default — Mon–Fri plans lunch, a snack and dinner. Weekends always include breakfast.</div>
+      </div>
+    </div>
     <button class="btn primary" style="width:100%;margin-top:14px" onclick="saveProfile()">Save profile</button>
+  </div>
+
+  <div class="card">
+    <div class="section-title" style="margin-top:0">Goals</div>
+    <p class="small muted" style="margin:0 0 10px">Pick what to track and the number to hit. Weekly goals reset every Monday; milestones stay until you tick them off. <b>Progress lives in the Tracker.</b></p>
+    <div id="goalSetup"></div>
+    <div class="grid2" style="margin-top:10px">
+      <button class="btn sm" data-ic="bars" onclick="addGoal('sessions')">Weekly sessions</button>
+      <button class="btn sm" data-ic="run" onclick="addGoal('km')">Weekly km</button>
+      <button class="btn sm" data-ic="dumbbell" onclick="addGoal('group')">Train a muscle</button>
+      <button class="btn sm" data-ic="flag" onclick="addGoal('custom')">Custom milestone</button>
+    </div>
   </div>
 
   <div class="section-title">Gear wishlist</div>
@@ -462,28 +483,14 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
 </section>
 
 <!-- ===================== GOALS ===================== -->
-<section class="view" id="view-goals">
-  <h2 style="font-size:20px;margin:8px 0 2px">Goals</h2>
-  <p class="muted small" style="margin:0 0 14px">Set targets and watch your progress. Weekly goals reset every Monday; milestones stay until you tick them off.</p>
-  <div id="goalsList"></div>
-  <div class="section-title">Add a goal</div>
-  <div class="grid2">
-    <button class="btn sm" data-ic="bars" onclick="addGoal('sessions')">Weekly sessions</button>
-    <button class="btn sm" data-ic="run" onclick="addGoal('km')">Weekly km</button>
-    <button class="btn sm" data-ic="dumbbell" onclick="addGoal('group')">Train a muscle</button>
-    <button class="btn sm" data-ic="flag" onclick="addGoal('custom')">Custom milestone</button>
-  </div>
-</section>
-
 <!-- bottom nav -->
 <nav class="nav" id="nav">
   <button data-view="generate" class="on"><span class="ic" data-ic="bolt"></span>Generate</button>
   <button data-view="workouts"><span class="ic" data-ic="book"></span>Library</button>
   <button data-view="week"><span class="ic" data-ic="plan"></span>Plan</button>
   <button data-view="tracker"><span class="ic" data-ic="bars"></span>Tracker</button>
-  <button data-view="goals"><span class="ic" data-ic="target"></span>Goals</button>
   <button data-view="food"><span class="ic" data-ic="idea"></span>Food</button>
-  <button data-view="gear"><span class="ic" data-ic="bag"></span>Gear</button>
+  <button data-view="settings"><span class="ic" data-ic="sliders"></span>Settings</button>
 </nav>
 
 
@@ -739,6 +746,7 @@ S.profile.age       ??= 32;
 S.profile.proteinPerKg ??= 2.0;  // hypertrophy + competitive football sits ~1.6–2.2
 S.profile.dbMaxKg   ??= 10;      // 2 kg handle + 8 kg of plates, per hand
 S.profile.kbMaxKg   ??= 12;
+S.profile.weekdayBreakfast ??= false;   // he skips it Mon–Fri
 S.protein ??= {};        // {"YYYY-MM-DD": grams} — grams, not taps, so a dish can add 42
 S.food ??= {};
 S.food.off ??= [];       // dishes he's rejected — same idea as switching off kit
@@ -777,10 +785,10 @@ function setView(v){
   document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.view===v));
   window.scrollTo(0,0);
   if(v==="generate")renderWeekStrip();
-  if(v==="tracker")renderTracker();
+  if(v==="tracker"){renderTracker();renderGoals()}
   if(v==="week")renderWeek();
-  if(v==="goals")renderGoals();
-  if(v==="gear")renderGear();
+  if(v==="food")renderFood();
+  if(v==="settings"){renderGear();renderProfile();renderGoalSetup()}
 }
 
 /* =========================== HELPERS =========================== */
@@ -1495,6 +1503,8 @@ function removeCustomKit(i){
 const MEALS=[
   // ---------- breakfast ----------
   {id:"b_skyr",   n:"Skyr with berries, almond butter and toasted seeds", c:"Nordic",   s:"breakfast",p:34,kcal:450,veg:true, m:3},
+  {id:"b_skyroats",n:"Skyr with oats, fruit and honey",                   c:"Nordic",   s:"breakfast",p:29,kcal:420,veg:true, m:2},
+  {id:"b_shake",  n:"Kefir, banana and whey shake",                       c:"—",        s:"breakfast",p:38,kcal:400,veg:true, m:2},
   {id:"b_yog",    n:"Greek yoghurt, walnuts and thyme honey",             c:"Greek",    s:"breakfast",p:32,kcal:480,veg:true, m:5},
   {id:"b_shak",   n:"Shakshuka with feta and two eggs",                   c:"Levantine",s:"breakfast",p:30,kcal:470,veg:true, m:25},
   {id:"b_menemen",n:"Menemen with beyaz peynir",                          c:"Turkish",  s:"breakfast",p:29,kcal:430,veg:true, m:20},
@@ -1557,23 +1567,42 @@ const MEALS=[
 ];
 const SLOTS=["breakfast","lunch","dinner","snack"];
 const SLOT_LABEL={breakfast:"Breakfast",lunch:"Lunch",dinner:"Dinner",snack:"Snack"};
-const mealById=id=>MEALS.find(m=>m.id===id);
-function mealPool(slot){
-  const off=S.food.off||[];
-  return MEALS.filter(m=>m.s===slot&&!off.includes(m.id));
+/* He doesn't eat breakfast Mon–Fri, so weekdays are lunch, snack and dinner.
+   Worth knowing: three meals tops out around 126 g, short of his 150 g target
+   — the day summary says so rather than quietly padding the numbers. */
+function todaySlots(d){
+  const day=(d||new Date()).getDay();          // 0 Sun … 6 Sat
+  const weekend=(day===0||day===6);
+  return (weekend||S.profile.weekdayBreakfast)
+    ? ["breakfast","lunch","dinner","snack"]
+    : ["lunch","snack","dinner"];
 }
+const mealById=id=>MEALS.find(m=>m.id===id);
+function mealPool(slot,quickOnly){
+  const off=S.food.off||[];
+  const pool=MEALS.filter(m=>m.s===slot&&!off.includes(m.id));
+  // A weekday breakfast has to survive a workday morning — a 25-minute
+  // shakshuka on a Tuesday is a dish he'd skip, which defeats the point.
+  if(quickOnly){
+    const quick=pool.filter(m=>m.m<=5);
+    if(quick.length)return quick;
+  }
+  return pool;
+}
+function isWeekday(){ const d=new Date().getDay(); return d>=1&&d<=5 }
 /* Sample a few hundred candidate days and keep the best. Cheaper to write and
    easier to reason about than a solver, and instant at this library size.
    Score punishes missing the protein target, a day with no vegetarian main,
    and eating four dishes from the same cuisine. */
 function pickDay(){
   const target=proteinTarget()||150;
+  const slots=todaySlots();
   const recent=new Set((S.food.history||[]).slice(-14));
   let best=null;
   for(let i=0;i<500;i++){
     const day=[];
-    for(const s of SLOTS){
-      const pool=mealPool(s);
+    for(const s of slots){
+      const pool=mealPool(s,s==="breakfast"&&isWeekday());
       if(!pool.length){day.push(null);continue}
       const fresh=pool.filter(m=>!recent.has(m.id));
       const from=fresh.length?fresh:pool;
@@ -1584,7 +1613,7 @@ function pickDay(){
     const vegMain=day.some(m=>m.veg&&(m.s==="lunch"||m.s==="dinner"));
     let score=Math.abs(total-target);
     if(!vegMain)score+=22;
-    score+=(SLOTS.length-new Set(day.map(m=>m.c)).size)*5;
+    score+=(slots.length-new Set(day.map(m=>m.c)).size)*5;
     if(!best||score<best.score)best={day,total,score};
   }
   return best;
@@ -1599,22 +1628,22 @@ function generateDay(){
 }
 /* Swap a single slot without disturbing the rest — the usual case is "yes but
    not that dinner", not "start again". */
-function rerollSlot(slot){
-  if(!S.food.day)return;
-  const idx=SLOTS.indexOf(slot);
-  const cur=S.food.day[idx];
-  const pool=mealPool(slot).filter(m=>m.id!==cur);
+/* Indexed rather than keyed by slot: the slot list varies by day now, and a
+   day could hold two snacks later on. */
+function rerollAt(idx){
+  if(!S.food.day||!S.food.day[idx])return;
+  const cur=mealById(S.food.day[idx]); if(!cur)return;
+  const pool=mealPool(cur.s,cur.s==="breakfast"&&isWeekday()).filter(m=>m.id!==cur.id);
   if(!pool.length){toast("Nothing else in that slot");return}
   const pick=pool[Math.floor(Math.random()*pool.length)];
   S.food.day[idx]=pick.id;
   S.food.history=[...(S.food.history||[]),pick.id].slice(-40);
   save(); renderFood();
 }
-function hideMeal(id){
+function hideMeal(id,idx){
   S.food.off=[...(S.food.off||[]),id];
-  const i=(S.food.day||[]).indexOf(id);
   save();
-  if(i>=0)rerollSlot(SLOTS[i]); else renderFood();
+  if(idx!=null&&S.food.day&&S.food.day[idx]===id)rerollAt(idx); else renderFood();
   toast("Hidden — it won't come up again");
 }
 function resetHidden(){ S.food.off=[]; save(); renderFood(); toast("All dishes back in") }
@@ -1645,9 +1674,10 @@ function renderFood(){
   el.innerHTML=`
     <div class="advice" style="margin-bottom:12px">
       <b>${total} g protein</b> · ~${kcal} kcal · ${vegN}/${meals.length} vegetarian
-      ${target?` · ${total>=target?"on target":`${target-total} g short — add a snack`}`:""}
+      ${target?` · ${total>=target?"on target":`<b>${target-total} g short</b>`}`:""}
+      ${target&&total<target?`<br><span class="small">Three meals can't quite reach ${target} g. A second snack closes it, or take the shortfall and make it up at the weekend.</span>`:""}
     </div>`+
-    meals.map(m=>`
+    meals.map((m,i)=>`
     <div class="card" style="margin-bottom:10px">
       <div class="pmeta">
         <span class="pill">${SLOT_LABEL[m.s]}</span>
@@ -1657,9 +1687,9 @@ function renderFood(){
       <div class="small muted" style="margin-bottom:10px">${m.c}${m.veg?" · vegetarian":""} · ~${m.kcal} kcal</div>
       <div class="grid2">
         <button class="btn sm" onclick="eatMeal('${m.id}')">Ate this (+${m.p} g)</button>
-        <button class="btn sm ghost" onclick="rerollSlot('${m.s}')">Swap</button>
+        <button class="btn sm ghost" onclick="rerollAt(${i})">Swap</button>
       </div>
-      <button class="btn sm ghost" style="width:100%;margin-top:8px" onclick="hideMeal('${m.id}')">Not for me</button>
+      <button class="btn sm ghost" style="width:100%;margin-top:8px" onclick="hideMeal('${m.id}',${i})">Not for me</button>
     </div>`).join("");
 }
 
@@ -1680,6 +1710,8 @@ function renderProfile(){
   const p=S.profile,set=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v};
   set("pfWeight",p.weightKg); set("pfHeight",p.heightCm); set("pfAge",p.age);
   set("pfPerKg",p.proteinPerKg); set("pfDbMax",p.dbMaxKg); set("pfKbMax",p.kbMaxKg);
+  const chk=document.getElementById("pfBfChk");
+  if(chk)chk.classList.toggle("on",!!p.weekdayBreakfast);
   const n=document.getElementById("pfTargetNote");
   if(!n)return;
   if(!p.weightKg){
@@ -1970,7 +2002,7 @@ function importData(ev){
       S.lastBackup=Date.now();
       save();
       renderTracker(); renderWeek(); renderGear(); renderGroupList(); updateSpark(); renderWeekStrip();
-      renderProfile(); renderProtein(); renderChecklist(); renderFood();
+      renderProfile(); renderProtein(); renderChecklist(); renderFood(); renderGoals(); renderGoalSetup();
       sessionStorage.removeItem("fb.backupDismissed");
       toast(`Restored ✓ — ${inc.sessions} session${inc.sessions===1?"":"s"}, ${inc.goals} goal${inc.goals===1?"":"s"}`);
     }catch(e){
@@ -2035,9 +2067,9 @@ function saveGoal(kind){
     if(isNaN(n)||n<=0){toast("Enter a number");return}
     S.goals.push({id:uid(),kind,target:n});
   }
-  save(); closeSheet(); renderGoals(); toast(I.target+" Goal added");
+  save(); closeSheet(); renderGoals(); renderGoalSetup(); toast(I.target+" Goal added");
 }
-function delGoal(id){S.goals=S.goals.filter(g=>g.id!==id);save();renderGoals();}
+function delGoal(id){S.goals=S.goals.filter(g=>g.id!==id);save();renderGoals();renderGoalSetup();}
 function toggleGoalDone(id){const g=S.goals.find(x=>x.id===id);if(g){g.done=!g.done;save();renderGoals();}}
 function goalProgress(g){
   const wk=thisWeekLog();
@@ -2055,9 +2087,17 @@ function goalProgress(g){
   if(g.group==="legs") cur+=wk.filter(l=>isLegCardio(l.type)).length;
   return {cur,target:g.target,unit:"this week",pct:Math.min(100,cur/g.target*100),met:cur>=g.target};
 }
+function goalTitle(g){
+  return g.kind==="sessions"?`${I.bars} Weekly sessions`
+       : g.kind==="km"?`${I.run} Weekly running`
+       : `${GROUPS[g.group].icon} ${GROUPS[g.group].name.split(' ')[0]} sessions`;
+}
+/* Progress only — this lives in the Tracker, next to the week it measures.
+   Choosing what to track and changing targets happens in Settings. */
 function renderGoals(){
   const c=document.getElementById("goalsList");
-  if(!S.goals.length){c.innerHTML=`<div class="empty">No goals yet.<br>Add one below to start tracking.</div>`;return}
+  if(!c)return;
+  if(!S.goals.length){c.innerHTML=`<div class="empty">No goals yet.<br>Pick some in Settings.</div>`;return}
   c.innerHTML=S.goals.map(g=>{
     const p=goalProgress(g);
     if(p.custom){
@@ -2065,18 +2105,43 @@ function renderGoals(){
         <div class="top">
           <div class="check ${p.met?'on':''}" onclick="toggleGoalDone('${g.id}')">✓</div>
           <div class="gt" style="${p.met?'text-decoration:line-through;opacity:.6':''}">${g.label}</div>
-          <button class="btn sm ghost" style="padding:6px 9px" onclick="delGoal('${g.id}')">✕</button>
         </div></div>`;
     }
-    const title=g.kind==="sessions"?`${I.bars} Weekly sessions`:g.kind==="km"?`${I.run} Weekly running`:`${GROUPS[g.group].icon} ${GROUPS[g.group].name.split(' ')[0]} sessions`;
     return `<div class="goal ${p.met?'met':''}">
-      <div class="top"><div class="gt">${title}</div>
-        ${p.met?'<span class="pill accent">Met ✓</span>':''}
-        <button class="btn sm ghost" style="padding:6px 9px" onclick="delGoal('${g.id}')">✕</button></div>
+      <div class="top"><div class="gt">${goalTitle(g)}</div>
+        ${p.met?'<span class="pill accent">Met ✓</span>':''}</div>
       <div class="bar ${p.met?'done':''}"><i style="width:${p.pct}%"></i></div>
       <div class="gp"><span>${p.cur} / ${p.target} ${p.unit}</span><span>${Math.round(p.pct)}%</span></div>
     </div>`;
   }).join("");
+}
+/* Setup — what to track and the number to hit. Lives in Settings. */
+function renderGoalSetup(){
+  const c=document.getElementById("goalSetup");
+  if(!c)return;
+  if(!S.goals.length){c.innerHTML=`<div class="empty">Nothing tracked yet.<br>Add a goal below.</div>`;return}
+  c.innerHTML=S.goals.map(g=>{
+    const p=goalProgress(g);
+    return `<div class="log-item">
+      <div style="flex:1">${p.custom?g.label:goalTitle(g)}
+        ${p.custom?"":`<div class="small muted">target ${g.target} ${p.unit}</div>`}</div>
+      ${p.custom?"":`<button class="btn sm ghost" style="padding:6px 10px" onclick="editGoalTarget('${g.id}')">Edit</button>`}
+      <button class="btn sm ghost" style="padding:6px 10px" onclick="delGoal('${g.id}');renderGoalSetup()">✕</button>
+    </div>`;
+  }).join("");
+}
+function editGoalTarget(id){
+  const g=S.goals.find(x=>x.id===id); if(!g)return;
+  const v=prompt("New target:",g.target);
+  if(v==null)return;
+  const n=parseFloat((v||"").replace(",","."));
+  if(isNaN(n)||n<=0){toast("Enter a number");return}
+  g.target=n; save(); renderGoalSetup(); renderGoals(); toast("Target updated ✓");
+}
+function toggleWeekdayBreakfast(){
+  S.profile.weekdayBreakfast=!S.profile.weekdayBreakfast;
+  save(); renderProfile(); renderFood();
+  toast(S.profile.weekdayBreakfast?"Weekday breakfast on":"Weekday breakfast off");
 }
 
 /* =========================== HEADER SPARK =========================== */
@@ -2094,6 +2159,7 @@ document.querySelectorAll("[data-ic]").forEach(el=>{
 });
 renderGroupTabs(); renderGroupList(); renderFocus(); updateSpark(); renderWeekStrip();
 renderBackupBanner(); renderBackupHint(); renderProfile(); renderProtein(); renderFood();
+renderGoals(); renderGoalSetup();
 // the share route only exists where the OS offers a share sheet (mostly phones)
 if(canShareFiles())document.querySelectorAll("[data-share-backup]").forEach(el=>{el.style.display=""});
 document.getElementById("genHint").textContent="Tip: log your football & gym sessions in the Tracker — the generator reads them to balance your week.";
