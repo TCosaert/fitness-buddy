@@ -369,11 +369,12 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
 
   <div class="section-title">Backup &amp; restore</div>
   <div class="card">
-    <p class="small muted" style="margin:0 0 12px">Your data lives only in this browser, and phones quietly clear storage for apps you haven't opened in a while — a backup file is the only thing that survives that. Export saves everything (sessions, runs, weights, goals, plans &amp; notes) to a file you keep; Import restores it here or on a new device. Keep the file somewhere that syncs, like Drive or your email.</p>
+    <p class="small muted" style="margin:0 0 12px">Your data lives only in this browser, and phones quietly clear storage for apps you haven't opened in a while — a backup file is the only thing that survives that. <b>Save</b> writes everything (sessions, runs, weights, goals, plans &amp; notes) to a file; <b>Send</b> hands it to your phone's share sheet so it can go straight to Drive or your mail. A backup sitting in your phone's Downloads dies with the phone — get it off the device. <b>Restore</b> brings it back here or on a new one.</p>
     <div class="grid2">
-      <button class="btn" data-ic="download" onclick="exportData()">Export backup</button>
-      <button class="btn" data-ic="upload" onclick="document.getElementById('importFile').click()">Import backup</button>
+      <button class="btn" data-ic="download" onclick="exportData()">Save backup</button>
+      <button class="btn" data-ic="upload" onclick="document.getElementById('importFile').click()">Restore backup</button>
     </div>
+    <button class="btn" data-ic="send" data-share-backup style="display:none;width:100%;margin-top:8px" onclick="shareBackup()">Send backup to Drive, mail, anywhere</button>
     <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="importData(event)">
     <div class="hint" id="backupHint"></div>
   </div>
@@ -1385,7 +1386,7 @@ function renderBackupBanner(){
     <b>Back up your training data</b><br>
     <span class="small">${msg}</span>
     <div class="grid2" style="margin-top:10px">
-      <button class="btn" onclick="exportData()">Back up now</button>
+      <button class="btn" onclick="backupNow()">Back up now</button>
       <button class="btn ghost" onclick="dismissBackupBanner()">Not now</button>
     </div>
   </div>`;
@@ -1408,21 +1409,67 @@ function renderBackupHint(){
     : `Last backup: ${when} · ${d} day${d===1?"":"s"} ago${d>=STALE_DAYS?" — <b>time for a fresh one</b>":""}`;
 }
 
-function exportData(){
-  S.lastBackup=Date.now();
-  const payload={app:"FitnessBuddy",version:1,exportedAt:new Date().toISOString(),data:S};
-  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
-  const url=URL.createObjectURL(blob);
+function backupPayload(){
+  return {app:"FitnessBuddy",version:1,exportedAt:new Date().toISOString(),data:S};
+}
+function backupFilename(){
   const d=new Date();
   const stamp=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
-  const a=document.createElement("a");
-  a.href=url; a.download=`fitness-buddy-backup-${stamp}.json`;
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
+  return `fitness-buddy-backup-${stamp}.json`;
+}
+/* Only called once a backup has actually landed somewhere — a cancelled
+   save dialog or share sheet must NOT count as being backed up. */
+function markBackedUp(msg){
+  S.lastBackup=Date.now();
   save();                                        // persists lastBackup + refreshes banner/hint
   sessionStorage.removeItem("fb.backupDismissed");
-  toast("Backup saved ✓");
+  toast(msg);
 }
+function canShareFiles(){
+  try{
+    return !!(navigator.canShare && navigator.canShare({files:[new File(["{}"],"t.json",{type:"application/json"})]}));
+  }catch(e){ return false }
+}
+
+/* Save a copy. On desktop Chrome the file picker lets you choose the folder
+   (put it in a synced one); everywhere else this falls back to a download. */
+async function exportData(){
+  const name=backupFilename(), text=JSON.stringify(backupPayload(),null,2);
+  if(window.showSaveFilePicker){
+    try{
+      const h=await showSaveFilePicker({suggestedName:name,
+        types:[{description:"Fitness Buddy backup",accept:{"application/json":[".json"]}}]});
+      const w=await h.createWritable(); await w.write(text); await w.close();
+      markBackedUp("Backup saved ✓"); return;
+    }catch(e){
+      if(e&&e.name==="AbortError")return;         // you cancelled — nothing was written
+      // anything else: fall through to a plain download
+    }
+  }
+  const blob=new Blob([text],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url; a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  markBackedUp("Backup saved to your downloads ✓");
+}
+
+/* Phone route: hand the file to the OS share sheet so it can go straight to
+   Drive, mail or anywhere else — off the device, which is the whole point. */
+async function shareBackup(){
+  const file=new File([JSON.stringify(backupPayload(),null,2)],backupFilename(),{type:"application/json"});
+  if(!canShareFiles()){toast("Sharing isn't available here — use Save instead");return}
+  try{
+    await navigator.share({files:[file],title:"Fitness Buddy backup"});
+    markBackedUp("Backup sent ✓");
+  }catch(e){
+    if(e&&e.name==="AbortError")return;           // you closed the share sheet
+    toast("Couldn't share that — use Save instead");
+  }
+}
+/* One tap from the warning banner: prefer getting it off the device. */
+function backupNow(){ return canShareFiles()?shareBackup():exportData() }
 function importData(ev){
   const file=ev.target.files&&ev.target.files[0];
   if(!file)return;
@@ -1578,6 +1625,8 @@ document.querySelectorAll("[data-ic]").forEach(el=>{
 });
 renderGroupTabs(); renderGroupList(); renderFocus(); updateSpark(); renderWeekStrip();
 renderBackupBanner(); renderBackupHint();
+// the share route only exists where the OS offers a share sheet (mostly phones)
+if(canShareFiles())document.querySelectorAll("[data-share-backup]").forEach(el=>{el.style.display=""});
 document.getElementById("genHint").textContent="Tip: log your football & gym sessions in the Tracker — the generator reads them to balance your week.";
 
 // Register service worker for offline use + installability (only when served over http/https)
