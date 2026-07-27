@@ -297,6 +297,7 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
 
 <!-- ===================== GENERATE ===================== -->
 <section class="view active" id="view-generate">
+  <div id="backupBanner"></div>
   <div class="card" style="background:linear-gradient(135deg,rgba(240,184,154,.35),rgba(158,199,193,.28));border-color:rgba(192,86,47,.25)">
     <h2 style="font-size:20px">Build my workout</h2>
     <p class="muted small" style="margin:6px 0 0">A full session — warm-up, main block, cool-down — sized to your clock and aware of your week. Legs stay light because football already covers them.</p>
@@ -368,7 +369,7 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
 
   <div class="section-title">Backup &amp; restore</div>
   <div class="card">
-    <p class="small muted" style="margin:0 0 12px">Your data lives only in this browser. Export a backup file you can keep safe, re-import after clearing your browser, or move to another device. Covers everything: sessions, runs, plans &amp; notes.</p>
+    <p class="small muted" style="margin:0 0 12px">Your data lives only in this browser, and phones quietly clear storage for apps you haven't opened in a while — a backup file is the only thing that survives that. Export saves everything (sessions, runs, weights, goals, plans &amp; notes) to a file you keep; Import restores it here or on a new device. Keep the file somewhere that syncs, like Drive or your email.</p>
     <div class="grid2">
       <button class="btn" data-ic="download" onclick="exportData()">Export backup</button>
       <button class="btn" data-ic="upload" onclick="document.getElementById('importFile').click()">Import backup</button>
@@ -654,13 +655,14 @@ let S = load();
 function load(){
   try{return JSON.parse(localStorage.getItem(LS))||{}}catch(e){return{}}
 }
-function save(){localStorage.setItem(LS,JSON.stringify(S))}
+function save(){localStorage.setItem(LS,JSON.stringify(S));renderBackupBanner();renderBackupHint()}
 S.weekNotes ??= "";
 S.weekItems ??= [];      // {text,done}
 S.log ??= [];            // {type,ts}
 S.lastSession ??= null;  // generated session memory
 S.goals ??= [];          // {id,kind,...}
 S.weights ??= {};        // {exerciseId: [{kg,ts},...]} — weight memory per exercise
+S.lastBackup ??= null;   // ms timestamp of the last export, null = never backed up
 S.kit=(S.kit&&typeof S.kit==="object"&&Array.isArray(S.kit.off)&&Array.isArray(S.kit.custom))?S.kit:{off:[],custom:[]};
 delete S.coachChat;                             // coach feature removed
 localStorage.removeItem("fitnessBuddy.apiKey"); // clear any previously stored key
@@ -1232,6 +1234,7 @@ function renderWeekStrip(){
 }
 function delLog(ts){S.log=S.log.filter(l=>l.ts!==ts);save();renderTracker();updateSpark()}
 function renderTracker(){
+  renderBackupHint();   // day count drifts, so refresh it whenever the screen is shown
   const wk=thisWeekLog();
   const cardio=wk.filter(l=>isLegCardio(l.type)).length;
   const gym=wk.filter(l=>l.type==="gym").length;
@@ -1324,8 +1327,89 @@ function removeCustomKit(i){
   S.kit.custom.splice(i,1); save(); renderGear(); toast("Removed from your kit");
 }
 
-/* =========================== BACKUP / RESTORE =========================== */
+/* =========================== BACKUP / RESTORE ===========================
+   Your data lives only in this browser, and mobile browsers evict storage
+   from apps you haven't opened in a while. A browser cannot silently write
+   a file without a user gesture, so the strongest guarantee available is:
+   always know how stale the backup is, say so loudly on the home screen,
+   and make saving a fresh one a single tap. */
+const STALE_DAYS = 14;
+const DAY_MS = 86400000;
+
+function hasRealData(){
+  return !!((S.log&&S.log.length) || (S.goals&&S.goals.length) ||
+            (S.weights&&Object.keys(S.weights).length) || (S.weekNotes||"").trim());
+}
+function daysSinceBackup(){
+  if(!S.lastBackup) return null;
+  return Math.max(0, Math.floor((Date.now()-S.lastBackup)/DAY_MS));
+}
+/* empty = nothing worth saving · never = has data, never exported
+   stale = older than STALE_DAYS · ok = recent enough */
+function backupState(){
+  if(!hasRealData()) return "empty";
+  const d=daysSinceBackup();
+  if(d===null) return "never";
+  return d>=STALE_DAYS ? "stale" : "ok";
+}
+function fmtDay(ts){
+  return new Date(ts).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"});
+}
+/* Counts used both for the restore preview and to describe what's at risk. */
+function summarise(d){
+  const log=Array.isArray(d.log)?d.log:[];
+  const ts=log.map(l=>l.ts).filter(Boolean).sort((a,b)=>a-b);
+  return {
+    sessions: log.length,
+    goals: Array.isArray(d.goals)?d.goals.length:0,
+    lifts: (d.weights&&typeof d.weights==="object"&&!Array.isArray(d.weights))?Object.keys(d.weights).length:0,
+    from: ts.length?fmtDay(ts[0]):null,
+    to: ts.length?fmtDay(ts[ts.length-1]):null
+  };
+}
+function describe(s){
+  return `${s.sessions} session${s.sessions===1?"":"s"}`+(s.from?` (${s.from} – ${s.to})`:"")+
+         `, ${s.goals} goal${s.goals===1?"":"s"}, ${s.lifts} tracked lift${s.lifts===1?"":"s"}`;
+}
+
+function renderBackupBanner(){
+  const el=document.getElementById("backupBanner");
+  if(!el) return;
+  const st=backupState();
+  if(st==="empty"||st==="ok"||sessionStorage.getItem("fb.backupDismissed")==="1"){el.innerHTML="";return}
+  const d=daysSinceBackup();
+  const msg = st==="never"
+    ? "You have never backed up. If this browser clears its storage, your training history is gone for good."
+    : `Your last backup was ${d} days ago — everything logged since then exists only on this device.`;
+  el.innerHTML=`<div class="up-note" style="margin:0 0 12px">
+    <b>Back up your training data</b><br>
+    <span class="small">${msg}</span>
+    <div class="grid2" style="margin-top:10px">
+      <button class="btn" onclick="exportData()">Back up now</button>
+      <button class="btn ghost" onclick="dismissBackupBanner()">Not now</button>
+    </div>
+  </div>`;
+}
+/* Dismissal lasts for this app session only — it comes back next launch. */
+function dismissBackupBanner(){
+  sessionStorage.setItem("fb.backupDismissed","1");
+  renderBackupBanner();
+}
+function renderBackupHint(){
+  const el=document.getElementById("backupHint");
+  if(!el) return;
+  const st=backupState();
+  if(st==="empty"){el.textContent="Nothing to back up yet — log a session first.";return}
+  if(st==="never"){el.innerHTML="<b>Never backed up.</b> One tap on Export saves everything you see here.";return}
+  const d=daysSinceBackup();
+  const when=fmtDay(S.lastBackup);
+  el.innerHTML = d===0
+    ? `Last backup: today ✓ — ${describe(summarise(S))}`
+    : `Last backup: ${when} · ${d} day${d===1?"":"s"} ago${d>=STALE_DAYS?" — <b>time for a fresh one</b>":""}`;
+}
+
 function exportData(){
+  S.lastBackup=Date.now();
   const payload={app:"FitnessBuddy",version:1,exportedAt:new Date().toISOString(),data:S};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
   const url=URL.createObjectURL(blob);
@@ -1335,7 +1419,9 @@ function exportData(){
   a.href=url; a.download=`fitness-buddy-backup-${stamp}.json`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  toast("Backup downloaded ✓");
+  save();                                        // persists lastBackup + refreshes banner/hint
+  sessionStorage.removeItem("fb.backupDismissed");
+  toast("Backup saved ✓");
 }
 function importData(ev){
   const file=ev.target.files&&ev.target.files[0];
@@ -1346,7 +1432,16 @@ function importData(ev){
       const parsed=JSON.parse(reader.result);
       const data=(parsed&&parsed.data)?parsed.data:parsed; // accept wrapped or raw state
       if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("bad");
-      if(!confirm("Import this backup? It will REPLACE the data currently in this browser."))return;
+      // Show what's in the file against what's here, so a restore can't
+      // silently swallow more history than it brings back.
+      const inc=summarise(data), cur=summarise(S);
+      let msg="Restore this backup?\n\n";
+      msg+="FILE:    "+describe(inc)+"\n";
+      msg+="CURRENT: "+describe(cur)+"\n\n";
+      msg+= cur.sessions>inc.sessions
+        ? `⚠ This REPLACES everything in this browser.\nYou would lose ${cur.sessions-inc.sessions} session(s) that are not in the file.`
+        : "This REPLACES everything currently in this browser.";
+      if(!confirm(msg))return;
       S=Object.assign({weekNotes:"",weekItems:[],log:[],lastSession:null},data);
       // sanity defaults
       S.weekItems=Array.isArray(S.weekItems)?S.weekItems:[];
@@ -1355,9 +1450,13 @@ function importData(ev){
       S.goals=Array.isArray(S.goals)?S.goals:[];
             S.weights=(S.weights&&typeof S.weights==="object"&&!Array.isArray(S.weights))?S.weights:{};
       S.kit=(S.kit&&typeof S.kit==="object"&&Array.isArray(S.kit.off)&&Array.isArray(S.kit.custom))?S.kit:{off:[],custom:[]};
+      // What's in the browser now matches a file you're holding, so this
+      // counts as backed up — regardless of when the file was written.
+      S.lastBackup=Date.now();
       save();
       renderTracker(); renderWeek(); renderGear(); renderGroupList(); updateSpark(); renderWeekStrip();
-      toast("Backup restored ✓");
+      sessionStorage.removeItem("fb.backupDismissed");
+      toast(`Restored ✓ — ${inc.sessions} session${inc.sessions===1?"":"s"}, ${inc.goals} goal${inc.goals===1?"":"s"}`);
     }catch(e){
       alert("Sorry — that doesn't look like a valid Fitness Buddy backup file.");
     }finally{
@@ -1478,6 +1577,7 @@ document.querySelectorAll("[data-ic]").forEach(el=>{
   if(g) el.insertAdjacentHTML("afterbegin", g+(el.textContent.trim()?" ":""));
 });
 renderGroupTabs(); renderGroupList(); renderFocus(); updateSpark(); renderWeekStrip();
+renderBackupBanner(); renderBackupHint();
 document.getElementById("genHint").textContent="Tip: log your football & gym sessions in the Tracker — the generator reads them to balance your week.";
 
 // Register service worker for offline use + installability (only when served over http/https)
