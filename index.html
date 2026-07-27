@@ -431,11 +431,12 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
    FITNESS BUDDY  —  data + logic
    Profile: 32, footballer (Aug–May), legs strong from football.
    Priority: chest, shoulders, arms, core. Legs = maintenance. Mobility = sidequest.
-   Kit: dumbbells 2–12kg, kettlebells 6/6/12, bands, push-up handles, chair, bodyweight.
+   Kit: dumbbells 2–10kg per hand (2kg handle + up to 8kg plates), kettlebells 6/6/12,
+   bands, push-up handles, chair, bodyweight.
    ========================================================================= */
 
 const KIT = {
-  bodyweight:"Bodyweight", dumbbells:"Dumbbells (2–12 kg)", kettlebell:"Kettlebells (6 / 12 kg)",
+  bodyweight:"Bodyweight", dumbbells:"Dumbbells (2–10 kg per hand)", kettlebell:"Kettlebells (6 / 12 kg)",
   bands:"Resistance bands", handles:"Push-up handles", chair:"Chair"
 };
 
@@ -516,7 +517,7 @@ const EX = [
    cues:["Stand tall, dumbbells at shoulder height, palms forward.","Brace your core (don't arch the lower back) and press straight overhead.","Lower under control to ear height.","Squeeze glutes to keep the press strict."]},
   {id:"db_lateral_raise",g:"shoulders",name:"DB lateral raise",kit:["dumbbells"],
    sets:4,reps:"12–20",rest:50,tempo:"slow up & down",
-   cues:["Slight bend in elbows, lead with the elbows not the hands.","Raise to shoulder height — picture pouring water from the dumbbells at the top.","Lower slowly; this is where width comes from.","Light weight, high reps — your 2–12kg set is perfect for this."]},
+   cues:["Slight bend in elbows, lead with the elbows not the hands.","Raise to shoulder height — picture pouring water from the dumbbells at the top.","Lower slowly; this is where width comes from.","Light weight, high reps — your 2–10kg set is perfect for this."]},
   {id:"arnold_press",g:"shoulders",name:"Arnold press",kit:["dumbbells"],
    sets:3,reps:"10–12",rest:70,
    cues:["Start with palms facing you at chin height.","As you press up, rotate so palms face forward at the top.","Reverse the rotation on the way down.","Hits all three delt heads in one move."]},
@@ -550,7 +551,7 @@ const EX = [
   // ---------- BACK ----------
   {id:"one_arm_row",g:"back",name:"One-arm DB row",kit:["dumbbells","chair"],
    sets:4,reps:"10–12 / arm",rest:70,tempo:"squeeze",
-   cues:["One hand and knee braced on the chair, flat back.","Pull the dumbbell to your hip, leading with the elbow.","Squeeze the shoulder blade at the top.","Unilateral = you effectively double your 12kg load. Your best back move."]},
+   cues:["One hand and knee braced on the chair, flat back.","Pull the dumbbell to your hip, leading with the elbow.","Squeeze the shoulder blade at the top.","Unilateral = you effectively double your 10kg load. Your best back move."]},
   {id:"band_lat_pulldown",g:"back",name:"Band lat pulldown",kit:["bands"],
    sets:3,reps:"12–18",rest:60,
    cues:["Anchor band high overhead (door top).","Pull elbows down and toward your ribs, chest proud.","Drive from the lats, not the arms.","Squeeze at the bottom, control the stretch up."],
@@ -1063,7 +1064,9 @@ function saveWeight(id,kg){
   save();
 }
 /* Suggests the next step: same weight 2+ sessions in a row → nudge +1 kg
-   (kettlebell-only moves jump 6→12); at the 12 kg ceiling → reps/tempo. */
+   (kettlebell-only moves jump 6→12); at the ceiling → reps/tempo.
+   The ceiling is per-tool: dumbbells top out at 10 kg per hand (2 kg handle
+   + 8 kg of plates), kettlebells at 12 kg. Moves that allow either use 12. */
 function weightSuggestion(id){
   const h=S.weights[id]||[];
   if(!h.length)return null;
@@ -1071,10 +1074,12 @@ function weightSuggestion(id){
   let streak=0;
   for(let i=h.length-1;i>=0&&h[i].kg===last;i--)streak++;
   const ex=exById(id);
-  const kbOnly=ex&&ex.kit.includes("kettlebell")&&!ex.kit.includes("dumbbells");
-  if(last>=12)return {last,streak,msg:"at your 12 kg max — add reps or slow the tempo"};
+  const hasKb=!!ex&&ex.kit.includes("kettlebell");
+  const kbOnly=hasKb&&!ex.kit.includes("dumbbells");
+  const ceiling=hasKb?12:10;
+  if(last>=ceiling)return {last,streak,msg:`at your ${ceiling} kg max — add reps or slow the tempo`};
   if(streak>=2){
-    const next=kbOnly?12:Math.min(12,last+1);
+    const next=kbOnly?12:Math.min(ceiling,last+1);
     return {last,streak,next};
   }
   return {last,streak};
