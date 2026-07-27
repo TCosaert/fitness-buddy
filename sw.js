@@ -1,5 +1,12 @@
 // Fitness Buddy service worker — offline caching for installability.
-const CACHE = "fitness-buddy-v10";
+//
+// Strategy is deliberately split:
+//   - App shell (HTML, manifest): NETWORK-FIRST, so a deploy reaches an
+//     installed phone on the next open. Falls back to cache when offline.
+//   - Icons and static art: CACHE-FIRST, they effectively never change.
+// A pure cache-first shell would pin the phone to whatever version it first
+// installed, which is what we're fixing here.
+const CACHE = "fitness-buddy-v11";
 const ASSETS = [
   "./",
   "./index.html",
@@ -23,19 +30,38 @@ self.addEventListener("activate", (e) => {
   );
 });
 
+const isShell = (request, url) =>
+  request.mode === "navigate" ||
+  url.pathname.endsWith("/") ||
+  /\.(html|json)$/.test(url.pathname);
+
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   // Never cache API calls (Anthropic) — always go to network.
   if (url.hostname.endsWith("anthropic.com")) return;
   if (e.request.method !== "GET") return;
-  // Cache-first for our own assets, network fallback.
+
+  const store = (resp) => {
+    if (resp.ok && url.origin === location.origin) {
+      const copy = resp.clone();
+      caches.open(CACHE).then((c) => c.put(e.request, copy));
+    }
+    return resp;
+  };
+
+  if (isShell(e.request, url)) {
+    // Fresh if we can, cached if we can't.
+    e.respondWith(
+      fetch(e.request)
+        .then(store)
+        .catch(() =>
+          caches.match(e.request).then((cached) => cached || caches.match("./index.html"))
+        )
+    );
+    return;
+  }
+
   e.respondWith(
-    caches.match(e.request).then((cached) => cached || fetch(e.request).then((resp) => {
-      if (resp.ok && url.origin === location.origin) {
-        const copy = resp.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
-      }
-      return resp;
-    }).catch(() => cached))
+    caches.match(e.request).then((cached) => cached || fetch(e.request).then(store).catch(() => cached))
   );
 });
