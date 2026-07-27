@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#efe7d8"/>
+  <!-- soft dream blobs -->
+  <circle cx="120" cy="120" r="150" fill="#f0b89a" opacity="0.45"/>
+  <circle cx="410" cy="420" r="160" fill="#9ec7c1" opacity="0.45"/>
+  <rect x="26" y="26" width="460" height="460" rx="92" fill="none" stroke="#e2d6bf" stroke-width="6"/>
+  <!-- dumbbell -->
+  <g stroke="#c0562f" stroke-width="26" stroke-linecap="round" fill="#c0562f">
+    <line x1="180" y1="256" x2="332" y2="256"/>
+    <rect x="120" y="196" width="40" height="120" rx="18"/>
+    <rect x="352" y="196" width="40" height="120" rx="18"/>
+    <rect x="92" y="216" width="34" height="80" rx="16"/>
+    <rect x="386" y="216" width="34" height="80" rx="16"/>
+  </g>
+  <!-- bolt accent -->
+  <path d="M256 96 l-30 84 h30 l-26 76 64 -96 h-32 l28 -64 z" fill="#3e7c79"/>
+</svg>
