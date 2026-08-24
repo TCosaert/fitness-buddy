@@ -94,6 +94,10 @@ input,textarea,select{width:100%;background:var(--bg2);border:1px solid var(--li
   border-radius:11px;padding:12px;font-size:15px;font-family:inherit}
 textarea{resize:vertical;min-height:90px}
 label.fld{display:block;font-size:13px;color:var(--muted);margin:0 0 6px 2px;font-weight:600}
+/* Grid cells stretch to equal height, but a label that wraps to two lines used
+   to push its input down out of line with the one beside it. */
+.fldgrid>div{display:flex;flex-direction:column;height:100%}
+.fldgrid>div>input{margin-top:auto}
 /* bottom nav */
 .nav{position:fixed;bottom:0;left:0;right:0;z-index:40;display:flex;background:rgba(14,18,26,.92);
   backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));max-width:760px;margin:0 auto}
@@ -422,7 +426,7 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
   <p class="muted small" style="margin:0 0 14px">Everything the app assumes about you lives here, so it's yours to correct — no waiting on a new version. Progress shows up in the Tracker.</p>
   <div class="card">
     <div class="section-title" style="margin-top:0">Profile</div>
-    <div class="grid2">
+    <div class="grid2 fldgrid">
       <div><label class="fld">Bodyweight (kg)</label>
         <input id="pfWeight" type="number" inputmode="decimal" step="0.5" min="30" placeholder="76"></div>
       <div><label class="fld">Height (cm)</label>
@@ -433,7 +437,7 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
     <div class="up-note" style="margin-top:12px" id="pfTargetNote"></div>
     <div class="section-title">Your ceilings</div>
     <p class="small muted" style="margin:0 0 10px">What you can actually load. The generator stops nudging you up once you're here — change these the day you buy more.</p>
-    <div class="grid2">
+    <div class="grid2 fldgrid">
       <div><label class="fld">Dumbbell max (kg per hand)</label>
         <input id="pfDbMax" type="number" inputmode="decimal" step="0.5" min="1" placeholder="10"></div>
       <div><label class="fld">Kettlebell max (kg)</label>
@@ -882,7 +886,7 @@ const FOCUSES={
   pull:{label:"Pull",groups:["back","arms"]},
   upper:{label:"Upper body",groups:["chest","shoulders","back","arms"]},
   armscore:{label:"Arms + Core",groups:["arms","core"]},
-  fullbody:{label:"Full body (light legs)",groups:["chest","back","legs","core"]},
+  fullbody:{label:"Full body",groups:["chest","back","legs","core"]},
 };
 function renderFocus(){
   const g=document.getElementById("focusGrid");
