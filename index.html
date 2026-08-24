@@ -62,7 +62,9 @@ a{color:var(--accent2);text-decoration:none}
 .mo-nav button{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);
   background:var(--card2);color:var(--txt);font-weight:700;font-size:16px;line-height:1}
 .mo-nav button:disabled{opacity:.35}
-.mo-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+/* minmax(0,1fr) not 1fr: aspect-ratio on the cells inflates their min-content
+   width, which pushes the grid past the viewport at 1fr */
+.mo-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .mo-dow{text-align:center;font-size:10px;font-weight:700;color:var(--muted2);padding-bottom:2px}
 .mo-cell{aspect-ratio:1;border-radius:9px;background:var(--card2);border:1px solid transparent;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:2px}
