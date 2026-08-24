@@ -66,8 +66,11 @@ a{color:var(--accent2);text-decoration:none}
    width, which pushes the grid past the viewport at 1fr */
 .mo-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
 .mo-dow{text-align:center;font-size:10px;font-weight:700;color:var(--muted2);padding-bottom:2px}
-.mo-cell{aspect-ratio:1;border-radius:9px;background:var(--card2);border:1px solid transparent;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:2px}
+/* No aspect-ratio here: grid items stretch to the row height by default, and
+   aspect-ratio would then derive the WIDTH from that height and overflow the
+   column. A min-height keeps the cells even without fighting the grid. */
+.mo-cell{min-height:40px;border-radius:9px;background:var(--card2);border:1px solid transparent;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:3px 1px}
 .mo-cell.empty{background:transparent}
 .mo-cell.today{border-color:var(--accent)}
 .mo-cell.has{background:var(--card)}
