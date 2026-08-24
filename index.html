@@ -53,6 +53,29 @@ a{color:var(--accent2);text-decoration:none}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--card2);
   border:1px solid var(--line);color:var(--txt);padding:12px 16px;border-radius:12px;font-weight:600;font-size:15px;transition:.12s}
 .btn:active{transform:scale(.98)}
+/* every planning button matches the tallest ("Football training", two lines) */
+.plan-btns .btn{min-height:62px;text-align:center}
+/* monthly overview: a Monday-first calendar with one dot per logged activity */
+.mo-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.mo-head b{font-size:15px}
+.mo-nav{display:flex;gap:6px}
+.mo-nav button{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);
+  background:var(--card2);color:var(--txt);font-weight:700;font-size:16px;line-height:1}
+.mo-nav button:disabled{opacity:.35}
+.mo-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.mo-dow{text-align:center;font-size:10px;font-weight:700;color:var(--muted2);padding-bottom:2px}
+.mo-cell{aspect-ratio:1;border-radius:9px;background:var(--card2);border:1px solid transparent;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:2px}
+.mo-cell.empty{background:transparent}
+.mo-cell.today{border-color:var(--accent)}
+.mo-cell.has{background:var(--card)}
+.mo-num{font-size:10.5px;color:var(--muted);line-height:1}
+.mo-cell.has .mo-num{color:var(--txt);font-weight:600}
+.mo-dots{display:flex;gap:2px;flex-wrap:wrap;justify-content:center;min-height:5px}
+.mo-dots i{width:5px;height:5px;border-radius:99px;display:block}
+.mo-legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.mo-legend span{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted)}
+.mo-legend i{width:7px;height:7px;border-radius:99px;display:block}
 .btn.primary{background:var(--accent);color:#0a0d07;border-color:var(--accent)}
 .btn.ghost{background:transparent}
 .btn.block{width:100%}
@@ -298,11 +321,6 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
 <!-- ===================== GENERATE ===================== -->
 <section class="view active" id="view-generate">
   <div id="backupBanner"></div>
-  <div class="card" style="background:linear-gradient(135deg,rgba(240,184,154,.35),rgba(158,199,193,.28));border-color:rgba(192,86,47,.25)">
-    <h2 style="font-size:20px">Build my workout</h2>
-    <p class="muted small" style="margin:6px 0 0">A full session — warm-up, main block, cool-down — sized to your clock and aware of your week. Legs stay light because football already covers them.</p>
-  </div>
-
   <div id="weekStrip"></div>
 
   <label class="fld">Time available</label>
@@ -334,7 +352,7 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
   <p class="muted small" style="margin:0 0 14px">Line up what you intend to train. Tick things off as you go and they log themselves.</p>
   <div class="section-title" style="margin-top:0">Plan a session</div>
   <p class="muted small" style="margin:-6px 0 10px">Tap what you intend to do. The generator reads these exactly — no guessing — and factors them in ahead of time. Tick one off when it's done and it logs straight to your tracker.</p>
-  <div class="grid2">
+  <div class="grid2 plan-btns">
     <button class="btn" data-ic="dumbbell" onclick="planGym()">Gym</button>
     <button class="btn" data-ic="ball" onclick="planSession('football_training')">Football training</button>
     <button class="btn" data-ic="clock" onclick="planSession('football_match')">Match (90')</button>
@@ -350,13 +368,6 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
     <button class="btn sm primary" onclick="addWeekItem()">Add</button>
   </div>
   <div class="hint">Typed reminders are for you only — the generator reads the buttons above, not text.</div>
-
-  <div class="section-title">Notes</div>
-  <div class="card">
-    <textarea id="weekNotes" placeholder="Anything worth remembering this week — how you felt, niggles, what to push next time."></textarea>
-    <button class="btn sm ghost" style="margin-top:8px" onclick="saveWeekNotes()">Save notes</button>
-    <div class="hint">Your own notes. Nothing here changes what gets generated.</div>
-  </div>
 </section>
 
 <!-- ===================== TRACKER ===================== -->
@@ -382,6 +393,9 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
   </div>
   <div class="section-title">This week</div>
   <div id="logList"></div>
+
+  <div class="section-title">Monthly overview</div>
+  <div id="monthOverview"></div>
 
   <div class="section-title">Backup &amp; restore</div>
   <div class="card">
@@ -859,8 +873,8 @@ function renderGroupList(){
 let genDur=45, genFocus="auto";
 const FOCUSES={
   auto:{label:"Let the app decide",groups:null},
-  push:{label:"Push (chest·shoulders·tri)",groups:["chest","shoulders","arms"]},
-  pull:{label:"Pull (back·biceps)",groups:["back","arms"]},
+  push:{label:"Push",groups:["chest","shoulders","arms"]},
+  pull:{label:"Pull",groups:["back","arms"]},
   upper:{label:"Upper body",groups:["chest","shoulders","back","arms"]},
   armscore:{label:"Arms + Core",groups:["arms","core"]},
   fullbody:{label:"Full body (light legs)",groups:["chest","back","legs","core"]},
@@ -1034,11 +1048,7 @@ function renderSession(warm,mains,cool,ctx){
 }
 
 /* =========================== THIS WEEK =========================== */
-function renderWeek(){
-  document.getElementById("weekNotes").value=S.weekNotes;
-  renderChecklist();
-}
-function saveWeekNotes(){S.weekNotes=document.getElementById("weekNotes").value;save();toast("Notes saved ✓")}
+function renderWeek(){ renderChecklist() }
 function addWeekItem(){
   const i=document.getElementById("weekItemInput");
   const t=i.value.trim(); if(!t)return;
@@ -1356,8 +1366,87 @@ function renderWeekStrip(){
     </div>`;
 }
 function delLog(ts){S.log=S.log.filter(l=>l.ts!==ts);save();renderTracker();updateSpark()}
+/* ---------- monthly overview ----------
+   A calendar of what actually happened, so a thin month is visible at a
+   glance rather than inferred from a week counter. monthOffset is 0 for the
+   current month and counts backwards; it deliberately isn't persisted — the
+   view should open on this month every time. */
+let monthOffset=0;
+function shiftMonth(d){
+  const oldest=oldestLogMonthOffset();
+  monthOffset=Math.min(oldest,Math.max(0,monthOffset+d));
+  renderMonth();
+}
+function oldestLogMonthOffset(){
+  if(!S.log.length)return 0;
+  const now=new Date(), first=new Date(Math.min(...S.log.map(l=>l.ts)));
+  return (now.getFullYear()-first.getFullYear())*12+(now.getMonth()-first.getMonth());
+}
+function renderMonth(){
+  const el=document.getElementById("monthOverview");
+  if(!el)return;
+  const now=new Date();
+  const view=new Date(now.getFullYear(),now.getMonth()-monthOffset,1);
+  const y=view.getFullYear(), m=view.getMonth();
+  const label=view.toLocaleDateString(undefined,{month:"long",year:"numeric"});
+
+  // bucket this month's entries by day
+  const byDay={};
+  S.log.forEach(l=>{
+    const d=new Date(l.ts);
+    if(d.getFullYear()===y&&d.getMonth()===m)(byDay[d.getDate()]??=[]).push(l);
+  });
+  const entries=Object.values(byDay).flat();
+  const counts={};
+  entries.forEach(l=>counts[l.type]=(counts[l.type]||0)+1);
+  const km=entries.filter(l=>l.type==="running").reduce((a,l)=>a+(l.km||0),0);
+
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const lead=(new Date(y,m,1).getDay()+6)%7;          // Monday-first
+  const isThisMonth=(y===now.getFullYear()&&m===now.getMonth());
+
+  let cells="";
+  for(let i=0;i<lead;i++)cells+='<div class="mo-cell empty"></div>';
+  for(let d=1;d<=daysInMonth;d++){
+    const items=byDay[d]||[];
+    const dots=items.slice(0,6).map(l=>{
+      const meta=LOGMETA[l.type];
+      return `<i style="background:${meta?meta.dot:"var(--muted)"}"></i>`;
+    }).join("");
+    const cls="mo-cell"+(items.length?" has":"")+(isThisMonth&&d===now.getDate()?" today":"");
+    const title=items.length?items.map(l=>(LOGMETA[l.type]||{}).label||l.type).join(", "):"";
+    cells+=`<div class="${cls}" title="${title}"><span class="mo-num">${d}</span><span class="mo-dots">${dots}</span></div>`;
+  }
+
+  const legend=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([t,n])=>{
+    const meta=LOGMETA[t]||{label:t,dot:"var(--muted)"};
+    return `<span><i style="background:${meta.dot}"></i>${meta.label} × ${n}</span>`;
+  }).join("");
+
+  const activeDays=Object.keys(byDay).length;
+  const summary=entries.length
+    ? `<b>${entries.length}</b> session${entries.length===1?"":"s"} across <b>${activeDays}</b> day${activeDays===1?"":"s"}`+(km?` · <b>${km.toFixed(km%1?1:0)} km</b> run`:"")
+    : "Nothing logged this month.";
+
+  el.innerHTML=`<div class="card">
+    <div class="mo-head">
+      <b>${label}</b>
+      <div class="mo-nav">
+        <button onclick="shiftMonth(1)" ${monthOffset>=oldestLogMonthOffset()?"disabled":""} aria-label="Previous month">‹</button>
+        <button onclick="shiftMonth(-1)" ${monthOffset<=0?"disabled":""} aria-label="Next month">›</button>
+      </div>
+    </div>
+    <div class="mo-grid">
+      ${["M","T","W","T","F","S","S"].map(d=>`<div class="mo-dow">${d}</div>`).join("")}
+      ${cells}
+    </div>
+    <div class="small muted" style="margin-top:11px">${summary}</div>
+    ${legend?`<div class="mo-legend">${legend}</div>`:""}
+  </div>`;
+}
 function renderTracker(){
   renderBackupHint();   // day count drifts, so refresh it whenever the screen is shown
+  renderMonth();
   const wk=thisWeekLog();
   const cardio=wk.filter(l=>isLegCardio(l.type)).length;
   const gym=wk.filter(l=>l.type==="gym").length;
