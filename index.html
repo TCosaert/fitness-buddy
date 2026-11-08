@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#efe7d8">
+<meta name="theme-color" content="#ff3b1f">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -186,137 +186,166 @@ label.fld{display:block;font-size:13px;color:var(--muted);margin:0 0 6px 2px;fon
 </style>
 <style>
 /* =========================================================================
-   SURREALIST EDITORIAL THEME — warm parchment, espresso ink, terracotta +
-   dream-teal, characterful serif display, floating dream-blobs + grain.
+   BRUTALIST THEME — red, black, paper. Hard 2px rules instead of shadows,
+   square corners, condensed caps for display, mono for labels and data.
    Overrides the base sheet above; class names unchanged so all JS still works.
    ========================================================================= */
 :root{
-  --bg:#efe7d8; --bg2:#e6dcc9; --card:#fbf6ec; --card2:#f1e9da;
-  --line:#e2d6bf; --txt:#2a231c; --muted:#8b7c67; --muted2:#ae9f89;
-  --accent:#c0562f; --accent2:#3e7c79; --warn:#bd8a32; --danger:#b23a2c;
-  --ink:#fbf4e8;                 /* text on accent */
-  --accent-soft:rgba(192,86,47,.12); --accent2-soft:rgba(62,124,121,.12);
-  --radius:18px;
-  --serif:'Fraunces',Georgia,'Times New Roman',serif;
-  --shadow:0 1px 2px rgba(70,45,20,.04), 0 10px 26px rgba(90,55,25,.06);
+  --bg:#f2efe9; --bg2:#e8e4dc; --card:#fbfaf7; --card2:#ece8e0;
+  --line:#0d0d0d; --txt:#0d0d0d; --muted:#4d4a45; --muted2:#7d7973;
+  --red:#ff3b1f;                 /* fills: buttons, bars, the header band */
+  --accent:#e02c10;              /* red that stays legible as small text on paper */
+  --accent2:#0d0d0d; --warn:#e02c10; --danger:#e02c10;
+  --ink:#fbfaf7;                 /* text on black */
+  --accent-soft:rgba(255,59,31,.1); --accent2-soft:rgba(13,13,13,.06);
+  --radius:0px; --rule:2px solid var(--line);
+  --display:'Anton','Arial Narrow',Impact,sans-serif;
+  --mono:'Space Mono',ui-monospace,Menlo,monospace;
+  --sans:'Space Grotesk',-apple-system,'Helvetica Neue',Arial,sans-serif;
+  --hard:4px 4px 0 var(--line);
 }
 html{background:var(--bg)}
-body{background:transparent;color:var(--txt)}
-/* dreamy background art */
-.bg-art{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-.bg-art .blob{position:absolute;border-radius:50%;filter:blur(72px);opacity:.55;mix-blend-mode:multiply}
-.bg-art .b1{width:60vw;height:60vw;max-width:520px;max-height:520px;top:-12%;left:-18%;
-  background:radial-gradient(circle at 40% 40%,#f0b89a,transparent 68%)}
-.bg-art .b2{width:65vw;height:65vw;max-width:560px;max-height:560px;bottom:-16%;right:-22%;
-  background:radial-gradient(circle at 50% 50%,#9ec7c1,transparent 66%)}
-.bg-art .b3{width:50vw;height:50vw;max-width:440px;max-height:440px;top:34%;right:-10%;
-  background:radial-gradient(circle at 50% 50%,#c8bce4,transparent 70%);opacity:.4}
-.bg-art::after{content:"";position:absolute;inset:0;mix-blend-mode:multiply;opacity:.35;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E")}
-.view{position:relative;z-index:1}
-/* serif display type */
-h1,h2,h3,h4,.app-header .logo{font-family:var(--serif);font-weight:600;letter-spacing:-.015em}
-.app-header .logo{font-weight:600}
-.app-header .logo b{color:var(--accent);font-style:italic}
-.section-title{font-family:var(--serif);font-style:italic;font-weight:500;text-transform:none;
-  letter-spacing:0;font-size:16px;color:var(--accent2)}
-.app-header{background:linear-gradient(180deg,var(--bg) 72%,rgba(239,231,216,0))}
-/* cards & surfaces */
-.card,.ex,.log-item,.goal,.gear-item{box-shadow:var(--shadow)}
-.kpi .box{box-shadow:var(--shadow)}
-.kpi .box .n{font-family:var(--serif);color:var(--accent)}
-.ex:active{border-color:var(--muted2)}
-input,textarea,select{background:#fffdf7;border-color:var(--line);color:var(--txt)}
-.grab{background:var(--muted2)}
-/* buttons */
-.btn{background:var(--card);border-color:var(--line);color:var(--txt)}
-.btn.primary{background:var(--accent);color:var(--ink);border-color:var(--accent)}
-.btn.ghost{background:transparent}
-.chip{background:var(--card);border-color:var(--line)}
-.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
-.seg{background:var(--card2)}
-.seg button.on{background:var(--accent);color:var(--ink)}
-.check.on{background:var(--accent);border-color:var(--accent);color:var(--ink)}
-/* pills */
-.pill{background:var(--card2);color:var(--muted);border-color:var(--line)}
-.pill.accent{background:var(--accent-soft);color:var(--accent);border-color:rgba(192,86,47,.28)}
-.pill.warn{background:rgba(189,138,50,.14);color:var(--warn);border-color:rgba(189,138,50,.32)}
-.pill.grp{background:var(--accent2-soft);color:var(--accent2);border-color:rgba(62,124,121,.26)}
-/* nav + fab + toast */
-.nav{background:rgba(251,246,236,.92);border-top-color:var(--line)}
-.nav button.on{color:var(--accent)}
-.toast{background:var(--accent);color:var(--ink);box-shadow:0 8px 22px rgba(192,86,47,.32)}
-/* week strip */
-.wd.on{background:var(--accent);border-color:var(--accent)}
-.wd.cardio.on{background:var(--accent2);border-color:var(--accent2)}
-.wcol.under{border-color:var(--warn);background:rgba(189,138,50,.07)}
-.wcol.under .wname{color:var(--warn)}
-/* goals */
-.bar>i{background:var(--accent)}
-.goal.met,.goal .top .pill.accent{}
-/* exercise list */
-.ex .play{color:var(--accent)}
-/* demo + advice */
-.demo-cta{background:linear-gradient(135deg,rgba(192,86,47,.12),rgba(62,124,121,.08));border-color:rgba(192,86,47,.28)}
-.demo-play{background:var(--accent);color:var(--ink);box-shadow:0 4px 14px rgba(192,86,47,.38)}
-.advice{background:linear-gradient(135deg,rgba(192,86,47,.10),rgba(62,124,121,.07));border-color:rgba(192,86,47,.22)}
-.advice .h{color:var(--accent)}
-.up-note{background:rgba(189,138,50,.09);border-color:rgba(189,138,50,.28)}
-.up-note b{color:var(--warn)}
-/* timeline */
-.timeline-block::before{background:var(--accent)}
-.timeline-block.warm::before{background:var(--accent2)}
-.timeline-block.cool::before{background:var(--warn)}
-/* overlays / sheets */
-.overlay{background:rgba(42,28,16,.55)}
-.sheet{background:var(--card)}
-.cue .b{color:var(--accent)}
-/* divider */
-.divider{background:var(--line)}
-/* surrealist scene — ambient art anchored to the bottom, fading upward so it
-   never competes with text. Sits behind the opaque content cards. */
-.bg-art .scene{position:absolute;left:0;bottom:0;width:100%;height:60vh;
-  background:url('surreal.svg') center bottom / cover no-repeat;
-  opacity:.74;pointer-events:none;
-  -webkit-mask-image:linear-gradient(to top,#000 64%,transparent 100%);
-  mask-image:linear-gradient(to top,#000 64%,transparent 100%)}
-/* ---------- buttons v2: soft pills that fit the organic theme ---------- */
-.btn{border-radius:999px;background:var(--card);border:1.5px solid var(--line);
-  color:var(--txt);font-weight:600;transition:.15s ease}
-.btn:hover{border-color:var(--accent);color:var(--accent)}
-.btn:active{transform:scale(.97)}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--ink);
-  box-shadow:0 6px 16px rgba(192,86,47,.26)}
-.btn.primary:hover{filter:brightness(1.05);color:var(--ink)}
-.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
-.btn.ghost:hover{color:var(--txt);border-color:transparent}
-.btn.sm{border-radius:999px}
-.btn.block{border-radius:18px}
-/* focus chips & toggles → soft outline pills */
-.chip{border-radius:999px;background:var(--card);border:1.5px solid var(--line);color:var(--txt)}
-.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
-.seg{border-radius:999px;background:var(--card2);padding:5px}
-.seg button{border-radius:999px}
-.seg button.on{background:var(--accent);color:var(--ink);box-shadow:0 3px 10px rgba(192,86,47,.22)}
-/* small round controls */
-/* keep the low Generate hint readable over the landscape */
-#genHint{background:rgba(251,246,236,.78);padding:9px 13px;border-radius:13px;
-  -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:block;margin-top:10px}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans)}
+.bg-art{display:none}
+.view{position:relative;z-index:1;animation:none}
+::selection{background:var(--red);color:#0d0d0d}
+
+/* ---------- type ---------- */
+h1,h2,h3,h4{font-family:var(--display);font-weight:400;text-transform:uppercase;letter-spacing:.005em;line-height:.95}
+.view>h2{font-size:40px!important;margin:18px 0 8px!important}
+.sheet h2{font-size:30px!important;line-height:1}
+.section-title{font-family:var(--mono);font-weight:700;font-style:normal;text-transform:uppercase;
+  letter-spacing:.06em;font-size:12px;color:var(--txt);display:flex;align-items:center;gap:10px}
+.section-title::after{content:"";flex:1;height:2px;background:var(--line)}
+label.fld{font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em;font-size:11.5px;color:var(--txt);font-weight:700}
+.small{font-size:13px}
+.muted{color:var(--muted)}
+.hint{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+a{color:var(--txt);text-decoration:underline;text-underline-offset:2px}
+a.demo-cta{text-decoration:none}
+
+/* ---------- masthead: red band, giant condensed wordmark ---------- */
+.app-header{position:relative;background:var(--red);border-bottom:var(--rule);
+  padding:14px var(--pad) 12px;align-items:flex-end}
+.app-header .logo{font-family:var(--display);font-weight:400;font-size:54px;line-height:.86;
+  text-transform:uppercase;letter-spacing:-.005em;color:#0d0d0d}
+.app-header .logo b{display:block;color:transparent;-webkit-text-stroke:2px #0d0d0d;font-style:normal;font-weight:400}
+.app-header .spark{font-family:var(--mono);font-size:11px;color:#0d0d0d;text-transform:uppercase;letter-spacing:.04em;align-self:flex-end}
+.app-header .spark b{color:#0d0d0d!important;font-family:var(--display);font-weight:400;font-size:34px!important;
+  display:block;line-height:1;letter-spacing:0}
+.view{padding-top:16px}
+
+/* ---------- surfaces ---------- */
+.card,.ex,.log-item,.goal,.gear-item,.kpi .box{background:var(--card);border:var(--rule);border-radius:0;box-shadow:none}
+.ex{margin-bottom:-2px}                       /* stacked rows share one rule */
+.ex+:not(.ex){margin-top:14px}
+.ex:active{transform:none;background:var(--card2);border-color:var(--line)}
+.ex .nm{font-weight:700;font-size:15.5px;letter-spacing:-.01em}
+.ex .sub{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.ex .idx{border-radius:0;background:#0d0d0d;color:var(--ink);font-family:var(--mono);font-size:12px}
+.ex .play{border-radius:0;background:transparent;border:var(--rule);color:#0d0d0d}
+.ex.unavail{opacity:.45}
+.kpi .box .n{font-family:var(--display);font-weight:400;font-size:38px;color:#0d0d0d}
+.kpi .box .l{font-family:var(--mono);color:var(--txt)}
+.goal.met,.gear-item.top{background:var(--accent-soft);border-color:var(--line)}
+.gear-item .rank{border-radius:0;background:#0d0d0d;color:var(--ink);font-family:var(--mono)}
+.divider{height:2px;background:var(--line)}
+.empty{font-family:var(--mono);font-size:12.5px;text-transform:uppercase;color:var(--muted)}
+
+/* ---------- controls ---------- */
+.btn{border-radius:0;background:var(--card);border:var(--rule);color:var(--txt);font-weight:700;
+  text-transform:uppercase;letter-spacing:.03em;font-size:14px;transition:transform .06s,box-shadow .06s}
+.btn:active{transform:translate(2px,2px)}
+.btn.primary{background:var(--red);color:#0d0d0d;border-color:var(--line);box-shadow:var(--hard)}
+.btn.primary:active{box-shadow:2px 2px 0 var(--line)}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--txt);text-decoration:underline;text-underline-offset:3px}
+.btn.sm,.btn.block{border-radius:0}
+.btn.sm{font-size:12px}
+.btn[data-ic="bolt"]{font-family:var(--display);font-weight:400;font-size:26px!important;letter-spacing:.02em;padding:16px!important}
+.chip{border-radius:0;background:var(--card);border:var(--rule);color:var(--txt);font-weight:700}
+.chip.on{background:#0d0d0d;color:var(--ink);border-color:var(--line)}
+.chip:active{transform:none}
+.seg{border-radius:0;background:var(--card);border:var(--rule);padding:0;gap:0}
+.seg button{border-radius:0;font-family:var(--mono);font-weight:700;text-transform:uppercase;color:var(--txt);padding:11px}
+.seg button+button{border-left:var(--rule)}
+.seg button.on{background:#0d0d0d;color:var(--ink);box-shadow:none}
+.check{border-radius:0;border:var(--rule)}
+.check.on{background:var(--red);border-color:var(--line);color:#0d0d0d}
+input,textarea,select{border-radius:0;background:var(--card);border:var(--rule);color:var(--txt);font-family:var(--mono);font-size:15px}
+input:focus,textarea:focus,select:focus{outline:3px solid var(--red);outline-offset:0}
+.wrow input{border-radius:0}
+.whint{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.whint b{color:var(--accent)}
+#genHint{display:block;margin-top:12px;padding:0;background:none}
+
+/* ---------- pills: mono stamps ---------- */
+.pill{border-radius:0;font-family:var(--mono);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;
+  background:transparent;color:var(--txt);border:1.5px solid var(--line)}
+.pill.accent{background:var(--red);color:#0d0d0d;border-color:var(--line)}
+.pill.grp{background:#0d0d0d;color:var(--ink);border-color:var(--line)}
+.pill.warn{background:transparent;color:var(--accent);border-color:var(--accent)}
+#kitList .pill{cursor:pointer;user-select:none}
+
+/* ---------- notices ---------- */
+.up-note{background:var(--card);border:var(--rule);border-left:10px solid var(--red);border-radius:0;color:var(--txt)}
+.up-note b{color:var(--txt);text-transform:uppercase;font-family:var(--mono);font-size:12.5px;letter-spacing:.03em}
+.advice{background:var(--card);border:var(--rule);border-radius:0}
+.advice .h{color:var(--accent);font-family:var(--mono)}
+
+/* ---------- session timeline ---------- */
+.timeline-block{border-left:2px solid var(--line);margin-left:7px;padding-left:18px}
+.timeline-block::before{border-radius:0;width:14px;height:14px;left:-8px;top:2px;border:2px solid var(--line);background:var(--red)}
+.timeline-block.warm::before{background:var(--card)}
+.timeline-block.cool::before{background:#0d0d0d}
+.timeline-block h4{font-size:24px;margin-bottom:4px}
+.timeline-block .t{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase}
+
+/* ---------- week strip & calendar ---------- */
+.wcol{border-radius:0;border:2px solid transparent}
+.wcol.under{border:2px dashed var(--accent);background:transparent}
+.wcol.under .wname{color:var(--accent)}
+.wname{font-family:var(--mono);font-size:8.5px;color:var(--txt)}
+.wd{border-radius:0;width:7px;height:7px;background:transparent;border:1.5px solid var(--line)}
+.wd.on{background:var(--red);border-color:var(--line)}
+.wd.cardio.on{background:#0d0d0d;border-color:var(--line)}
+.bar{border-radius:0;height:12px;background:var(--card2);border:2px solid var(--line)}
+.bar>i{border-radius:0;background:var(--red)}
+.mo-nav button{border-radius:0;border:var(--rule);background:var(--card)}
+.mo-cell{border-radius:0;background:var(--card2)}
+.mo-cell.has{background:var(--card);border-color:var(--line)}
+.mo-cell.today{border:2px solid var(--red)}
+.mo-num{font-family:var(--mono)}
+.mo-dots i,.mo-legend i,.log-item .dot{border-radius:0}
+.mo-dow{font-family:var(--mono);color:var(--txt)}
+
+/* ---------- nav, sheet, toast ---------- */
+.nav{background:#0d0d0d;border-top:none;backdrop-filter:none;-webkit-backdrop-filter:none;padding:0 0 env(safe-area-inset-bottom);gap:0}
+.nav button{color:var(--ink);font-family:var(--mono);text-transform:uppercase;font-size:9.5px;letter-spacing:.03em;padding:10px 2px 9px;border-radius:0}
+.nav button+button{border-left:1px solid #333}
+.nav button.on{background:var(--red);color:#0d0d0d}
+.nav button .ic{background:none!important}
+.overlay{background:rgba(13,13,13,.7);backdrop-filter:none}
+.sheet{background:var(--bg);border:none;border-top:6px solid var(--red);border-radius:0}
+.grab{border-radius:0;background:#0d0d0d;height:3px}
+.cue{font-size:14.5px}
+.cue .b{color:var(--accent);font-family:var(--mono)}
+.toast{border-radius:0;background:#0d0d0d;color:var(--ink);border:2px solid var(--red);box-shadow:none;font-family:var(--mono);font-size:12.5px;text-transform:uppercase}
+.demo-cta{border-radius:0;background:#0d0d0d;border:var(--rule)}
+.demo-title{color:var(--ink);text-transform:uppercase;font-family:var(--display);font-weight:400;font-size:22px;letter-spacing:.02em}
+.demo-sub{color:#bdb8b0;font-family:var(--mono);font-size:11px}
+.demo-play{border-radius:0;background:var(--red);color:#0d0d0d;box-shadow:none}
+.demo-cta:active{transform:none}
+
 /* ---------- minimalist line icons ---------- */
 svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
-  fill:none;stroke:currentColor;stroke-width:1.85;stroke-linecap:round;stroke-linejoin:round}
-.nav button .ic{font-size:21px}
+  fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:square;stroke-linejoin:miter}
+.nav button .ic{font-size:20px}
 .nav button .ic svg.i{vertical-align:0}
-.ex .play svg.i,.demo-play svg.i{stroke-width:2}
 /* ---------- weight memory ---------- */
 .wrow{display:flex;align-items:center;gap:9px;margin-top:8px}
-.wrow input{width:76px;padding:7px 10px;font-size:14px;border-radius:10px}
-.whint{font-size:12px;color:var(--muted);line-height:1.35}
-.whint b{color:var(--accent)}
+.wrow input{width:76px;padding:7px 10px;font-size:14px}
 .whist{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
-/* editable kit */
-.ex.unavail{opacity:.55}
-#kitList .pill{cursor:pointer;user-select:none;transition:.15s}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
@@ -1410,13 +1439,13 @@ function renderSession(warm,mains,cool,ctx){
     </div>`).join("");
 
   document.getElementById("genResult").innerHTML=`
-    <div class="card" style="border-color:rgba(192,86,47,.3);background:rgba(192,86,47,.05)">
+    <div class="card" style="border-width:3px">
       <div class="row">
-        <h3 style="font-size:17px">Your ${genDur}-min session</h3>
+        <h3 style="font-size:30px">Your ${genDur}-min session</h3>
         <span class="pill accent" style="margin-left:auto">~${genDur} min</span>
       </div>
       <div class="small muted" style="margin-top:6px">${trained}</div>
-      ${note?`<div class="small" style="margin-top:8px;color:var(--accent2)">${I.idea} ${note}</div>`:""}
+      ${note?`<div class="small" style="margin-top:8px;color:var(--txt)">${I.idea} ${note}</div>`:""}
       ${rotNote?`<div class="small" style="margin-top:6px;color:var(--accent)">${I.rotate} ${rotNote}</div>`:""}
       ${cNotes.map(n=>`<div class="small" style="margin-top:6px">${I.arms} ${n}</div>`).join("")}
       <button class="btn sm block" style="margin-top:12px" onclick="logGeneratedDone()">✓ Mark this done &amp; log it</button>
@@ -1534,11 +1563,11 @@ function renderChecklist(){
 /* =========================== TRACKER =========================== */
 const LOGMETA={
   gym:{label:"Gym",dot:"var(--accent)",icon:I.dumbbell},
-  football_training:{label:"Football training",dot:"#7ea7b0",icon:I.ball},
-  football_match:{label:"Match (90')",dot:"#7ea7b0",icon:I.clock},
-  running:{label:"Run",dot:"#d98b5a",icon:I.run},
-  padel:{label:"Padel",dot:"#9a86c2",icon:I.padel},
-  mobility:{label:"Mobility",dot:"var(--warn)",icon:I.wave},
+  football_training:{label:"Football training",dot:"#0d0d0d",icon:I.ball},
+  football_match:{label:"Match (90')",dot:"#0d0d0d",icon:I.clock},
+  running:{label:"Run",dot:"#8c8780",icon:I.run},
+  padel:{label:"Padel",dot:"#ffa494",icon:I.padel},
+  mobility:{label:"Mobility",dot:"#c9c4bb",icon:I.wave},
 };
 // what counts as legs + conditioning (so the generator can keep legs light)
 const LEGCARDIO=["football_training","football_match","running","padel"];

@@ -6,7 +6,7 @@
 //   - Icons and static art: CACHE-FIRST, they effectively never change.
 // A pure cache-first shell would pin the phone to whatever version it first
 // installed, which is what we're fixing here.
-const CACHE = "fitness-buddy-v11";
+const CACHE = "fitness-buddy-v12";
 const ASSETS = [
   "./",
   "./index.html",
