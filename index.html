@@ -316,6 +316,10 @@ input:focus,textarea:focus,select:focus{outline:3px solid var(--red);outline-off
 .mo-cell.today{border:2px solid var(--red)}
 .mo-num{font-family:var(--mono)}
 .mo-dots i,.mo-legend i,.log-item .dot{border-radius:0}
+.mo-cell.tap{cursor:pointer}
+.mo-cell.tap:active{background:var(--red)}
+.mo-cell.planned{border:2px dashed var(--line)}
+.mo-dots i.plan,.mo-legend i.plan{background:transparent;border:1.5px solid var(--line);box-sizing:border-box}
 .mo-dow{font-family:var(--mono);color:var(--txt)}
 
 /* ---------- nav, sheet, toast ---------- */
@@ -1533,10 +1537,11 @@ function toggleWeekItem(idx){
   it.done=!it.done;
   if(it.type){
     if(it.done){
-      const entry={type:it.type,ts:Date.now()};
+      // a dated plan ticked on or after its day is logged on that day
+      const entry={type:it.type,ts:it.date&&it.date<=todayIso()?dayTs(it.date):Date.now()};
       if(it.type==="running")entry.km=it.km??null;
       if(it.type==="gym")entry.groups=it.groups||[];
-      S.log.push(entry);
+      addLogEntry(entry);
       it.logTs=entry.ts;
       toast("✓ Done — logged to your tracker");
     }else if(it.logTs){
@@ -1555,7 +1560,7 @@ function renderChecklist(){
   c.innerHTML=S.weekItems.map((it,i)=>`
     <div class="log-item">
       <div class="check ${it.done?'on':''}" onclick="toggleWeekItem(${i})">✓</div>
-      <div style="flex:1;${it.done?'opacity:.5;text-decoration:line-through':''}">${planIcon(it)}${planLabel(it)}</div>
+      <div style="flex:1;${it.done?'opacity:.5;text-decoration:line-through':''}">${planIcon(it)}${planLabel(it)}${it.date?` <span class="pill" style="margin-left:4px">${new Date(dayMs(it.date)).toLocaleDateString(undefined,{weekday:"short",day:"numeric",month:"short"})}</span>`:""}</div>
       <button class="btn sm ghost" style="padding:6px 10px" onclick="delWeekItem(${i})">✕</button>
     </div>`).join("");
 }
@@ -1602,7 +1607,8 @@ function weekSportLoad(){
   thisWeekLog().forEach(l=>{ if(SPORT_LOAD[l.type]) add(l.type,1,l.km); });
 
   const planned=[];
-  (S.weekItems||[]).filter(i=>!i.done&&i.type).forEach(i=>{
+  // a dated plan (from the calendar) only counts in the week it falls in
+  (S.weekItems||[]).filter(i=>!i.done&&i.type&&(!i.date||weekKey(dayMs(i.date))===weekKey())).forEach(i=>{
     if(SPORT_LOAD[i.type]) add(i.type,PLAN_WEIGHT,i.km);
     // a planned gym session counts toward the groups it intends to train
     else if(i.type==="gym") (i.groups||[]).forEach(g=>load[g]=(load[g]||0)+PLAN_WEIGHT);
@@ -1810,9 +1816,13 @@ function delLog(ts){S.log=S.log.filter(l=>l.ts!==ts);save();renderTracker();upda
    current month and counts backwards; it deliberately isn't persisted — the
    view should open on this month every time. */
 let monthOffset=0;
+/* Negative offsets are future months (for planning). Going back is allowed a
+   year past today even with no history — backfilling is the point — and
+   further if the log itself goes back further. */
+const MONTHS_AHEAD=6, MONTHS_BACK=12;
+const oldestMonthOffset=()=>Math.max(MONTHS_BACK,oldestLogMonthOffset());
 function shiftMonth(d){
-  const oldest=oldestLogMonthOffset();
-  monthOffset=Math.min(oldest,Math.max(0,monthOffset+d));
+  monthOffset=Math.min(oldestMonthOffset(),Math.max(-MONTHS_AHEAD,monthOffset+d));
   renderMonth();
 }
 function oldestLogMonthOffset(){
@@ -1835,6 +1845,14 @@ function renderMonth(){
     if(d.getFullYear()===y&&d.getMonth()===m)(byDay[d.getDate()]??=[]).push(l);
   });
   const entries=Object.values(byDay).flat();
+  // dated plans from the calendar (or Plan tab) that haven't been ticked off yet
+  const planByDay={};
+  (S.weekItems||[]).forEach(it=>{
+    if(!it.date||it.done||!it.type)return;
+    const d=new Date(dayMs(it.date));
+    if(d.getFullYear()===y&&d.getMonth()===m)(planByDay[d.getDate()]??=[]).push(it);
+  });
+  const nPlanned=Object.values(planByDay).flat().length;
   const counts={};
   entries.forEach(l=>counts[l.type]=(counts[l.type]||0)+1);
   const km=entries.filter(l=>l.type==="running").reduce((a,l)=>a+(l.km||0),0);
@@ -1846,42 +1864,124 @@ function renderMonth(){
   let cells="";
   for(let i=0;i<lead;i++)cells+='<div class="mo-cell empty"></div>';
   for(let d=1;d<=daysInMonth;d++){
-    const items=byDay[d]||[];
+    const items=byDay[d]||[], plans=planByDay[d]||[];
     const dots=items.slice(0,6).map(l=>{
       const meta=LOGMETA[l.type];
       return `<i style="background:${meta?meta.dot:"var(--muted)"}"></i>`;
-    }).join("");
-    const cls="mo-cell"+(items.length?" has":"")+(isThisMonth&&d===now.getDate()?" today":"");
-    const title=items.length?items.map(l=>(LOGMETA[l.type]||{}).label||l.type).join(", "):"";
-    cells+=`<div class="${cls}" title="${title}"><span class="mo-num">${d}</span><span class="mo-dots">${dots}</span></div>`;
+    }).join("")+plans.slice(0,Math.max(0,6-items.length)).map(()=>`<i class="plan"></i>`).join("");
+    const cls="mo-cell tap"+(items.length?" has":"")+(plans.length?" planned":"")+(isThisMonth&&d===now.getDate()?" today":"");
+    const title=items.concat(plans).map(l=>(LOGMETA[l.type]||{}).label||l.type).join(", ");
+    cells+=`<div class="${cls}" title="${title}" onclick="openDay('${dayIso(y,m,d)}')"><span class="mo-num">${d}</span><span class="mo-dots">${dots}</span></div>`;
   }
 
   const legend=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([t,n])=>{
     const meta=LOGMETA[t]||{label:t,dot:"var(--muted)"};
     return `<span><i style="background:${meta.dot}"></i>${meta.label} × ${n}</span>`;
-  }).join("");
+  }).join("")+(nPlanned?`<span><i class="plan"></i>Planned × ${nPlanned}</span>`:"");
 
   const activeDays=Object.keys(byDay).length;
   const summary=entries.length
     ? `<b>${entries.length}</b> session${entries.length===1?"":"s"} across <b>${activeDays}</b> day${activeDays===1?"":"s"}`+(km?` · <b>${km.toFixed(km%1?1:0)} km</b> run`:"")
-    : "Nothing logged this month.";
+    : (nPlanned?"Nothing logged yet.":"Nothing logged this month.");
 
   el.innerHTML=`<div class="card">
     <div class="mo-head">
       <b>${label}</b>
       <div class="mo-nav">
-        <button onclick="shiftMonth(1)" ${monthOffset>=oldestLogMonthOffset()?"disabled":""} aria-label="Previous month">‹</button>
-        <button onclick="shiftMonth(-1)" ${monthOffset<=0?"disabled":""} aria-label="Next month">›</button>
+        <button onclick="shiftMonth(1)" ${monthOffset>=oldestMonthOffset()?"disabled":""} aria-label="Previous month">‹</button>
+        <button onclick="shiftMonth(-1)" ${monthOffset<=-MONTHS_AHEAD?"disabled":""} aria-label="Next month">›</button>
       </div>
     </div>
     <div class="mo-grid">
       ${["M","T","W","T","F","S","S"].map(d=>`<div class="mo-dow">${d}</div>`).join("")}
       ${cells}
     </div>
-    <div class="small muted" style="margin-top:11px">${summary}</div>
+    <div class="small muted" style="margin-top:11px">${summary}${nPlanned&&entries.length?` · <b>${nPlanned}</b> planned`:""}</div>
+    <div class="hint">Tap a day to log a session you forgot, or plan one ahead.</div>
     ${legend?`<div class="mo-legend">${legend}</div>`:""}
   </div>`;
 }
+/* ---------- calendar day sheet ----------
+   Past days and today log real sessions on that date, so a forgotten match
+   lands in the week it actually happened. Future days plan instead: the same
+   {type,…} items the Plan tab uses, plus a date. Ticking one off later logs
+   it like any other plan, and the generator only counts a dated plan in the
+   week it falls in. */
+let _day=null;   // ISO date of the open day sheet
+const dayIso=(y,m,d)=>`${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+const todayIso=()=>isoDay(Date.now());
+// noon on that day (now, for today), nudged so it stays unique — delLog keys on ts
+function dayTs(iso){
+  let t=iso===todayIso()?Date.now():dayMs(iso)+12*3600000;
+  while(S.log.some(l=>l.ts===t))t++;
+  return t;
+}
+// backfilled entries go in date order: pendingQuestion and friends read the tail
+function addLogEntry(e){S.log.push(e);S.log.sort((a,b)=>a.ts-b.ts);return e}
+function entryLabel(l){
+  const m=LOGMETA[l.type]||{label:l.type,icon:""};
+  if(l.type==="running"&&l.km!=null)return m.label+" · "+l.km+" km";
+  if(l.type==="gym"&&(l.groups||[]).length)return m.label+" · "+l.groups.map(g=>GROUPS[g]?GROUPS[g].name.toLowerCase():g).join(", ");
+  return m.label;
+}
+function openDay(iso){
+  _day=iso;
+  const future=iso>todayIso();
+  const title=new Date(dayMs(iso)).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"});
+  const logged=S.log.filter(l=>isoDay(l.ts)===iso);
+  const planned=S.weekItems.map((it,i)=>({it,i})).filter(o=>o.it.date===iso&&!o.it.done&&o.it.type);
+  const row=(dot,label,tag,del)=>`<div class="log-item"${tag==="planned"?' style="border-style:dashed"':""}>
+      <div class="dot" style="${dot}"></div><div style="flex:1"><b>${label}</b></div>
+      <span class="pill ${tag==="planned"?"":"grp"}">${tag}</span>
+      <button class="btn sm ghost" style="padding:6px 10px" onclick="${del}">✕</button></div>`;
+  const rows=logged.map(l=>row(`background:${(LOGMETA[l.type]||{}).dot}`,(LOGMETA[l.type]||{}).icon+" "+entryLabel(l),"logged",`delDayLog(${l.ts})`)).join("")
+    +planned.map(o=>row("background:transparent;border:1.5px solid var(--line)",(LOGMETA[o.it.type]||{}).icon+" "+entryLabel(o.it),"planned",`delDayPlan(${o.i})`)).join("");
+  const b=(fn,ic,label)=>`<button class="btn" onclick="${fn}">${I[ic]} ${label}</button>`;
+  openConstraintSheet(`
+    <div class="row" style="margin-bottom:4px">
+      <span class="pill ${future?"":"accent"}">${future?"Plan ahead":iso===todayIso()?"Today":"Backfill"}</span>
+      <button class="btn sm ghost" style="margin-left:auto" onclick="closeSheet()">Close</button>
+    </div>
+    <h2 style="font-size:28px;margin:8px 0 12px">${title}</h2>
+    ${rows||`<div class="empty" style="padding:14px">Nothing on this day yet.</div>`}
+    <div class="section-title">${future?"Plan a session":"Log a session"}</div>
+    <div class="grid2 plan-btns">
+      ${b("dayGym()","dumbbell","Gym")}${b("dayAdd('football_training')","ball","Football training")}
+      ${b("dayAdd('football_match')","clock","Match (90')")}${b("dayRun()","run","Running")}
+      ${b("dayAdd('padel')","padel","Padel")}${b("dayAdd('mobility')","wave","Mobility")}
+    </div>
+    ${future?`<p class="small muted" style="margin:12px 0 0">Planned, not logged. It shows on the Plan tab; tick it off there once it's done.</p>`:""}`);
+}
+function afterDayChange(){
+  updateSpark(); renderWeekStrip(); renderChecklist();
+  if(document.getElementById("view-tracker").classList.contains("active"))renderTracker(); else renderMonth();
+}
+function dayAdd(type,extra){
+  const future=_day>todayIso();
+  if(future) S.weekItems.push(Object.assign({type,done:false,date:_day},extra||{}));
+  else addLogEntry(Object.assign({type,ts:dayTs(_day)},extra||{},type==="gym"?{exercises:[],ramp:rampSnapshot()}:{}));
+  save(); afterDayChange();
+  toast(((LOGMETA[type]||{}).icon||"")+(future?" Planned":" Logged")+" for "+cDay(dayMs(_day)));
+  openDay(_day);
+}
+function dayGym(){
+  const future=_day>todayIso();
+  gymSheet(future?"Plan gym":"Log gym",
+    `${cDay(dayMs(_day))} — tap the muscle groups ${future?"you intend to train":"you trained"}.`,
+    future?"Add to plan":"Log session","confirmDayGym");
+}
+function confirmDayGym(){
+  if(!_gymPick.size){toast("Pick at least one group");return}
+  dayAdd("gym",{groups:[..._gymPick]});
+}
+function dayRun(){
+  const future=_day>todayIso();
+  runSheet((future?"Plan a run · ":"Log a run · ")+cDay(dayMs(_day)),future?"Add to plan":"Log run","confirmDayRun");
+}
+function confirmDayRun(){ dayAdd("running",{km:readRunKm()}) }
+function delDayLog(ts){S.log=S.log.filter(l=>l.ts!==ts);save();afterDayChange();openDay(_day)}
+function delDayPlan(i){S.weekItems.splice(i,1);save();afterDayChange();openDay(_day)}
+
 function renderTracker(){
   renderBackupHint();   // day count drifts, so refresh it whenever the screen is shown
   renderMonth();
