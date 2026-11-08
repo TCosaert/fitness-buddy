@@ -330,6 +330,7 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
 <!-- ===================== GENERATE ===================== -->
 <section class="view active" id="view-generate">
   <div id="backupBanner"></div>
+  <div id="constraintBar"></div>
   <div id="weekStrip"></div>
 
   <label class="fld">Time available</label>
@@ -596,7 +597,7 @@ const EX = [
   {id:"db_curl",g:"arms",name:"DB biceps curl",kit:["dumbbells"],
    sets:4,reps:"10–14",rest:60,tempo:"3s down",
    cues:["Elbows pinned to your sides, curl without swinging.","Squeeze hard at the top.","Lower slowly — the negative builds the most size.","Last 2 reps should be a real fight."]},
-  {id:"hammer_curl",g:"arms",name:"Hammer curl",kit:["dumbbells"],
+  {id:"hammer_curl",g:"arms",name:"Hammer curl",kit:["dumbbells"],tags:["forearm"],
    sets:3,reps:"10–14",rest:60,
    cues:["Neutral grip (palms facing each other) throughout.","Targets the brachialis — pushes the biceps up and adds forearm thickness.","No swinging; control both directions."]},
   {id:"db_oh_triceps",g:"arms",name:"Overhead DB triceps extension",kit:["dumbbells"],
@@ -649,7 +650,7 @@ const EX = [
   {id:"dead_bug",g:"core",name:"Dead bug",kit:["bodyweight"],
    sets:3,reps:"10 / side",rest:40,
    cues:["On your back, arms up, knees over hips.","Slowly extend opposite arm and leg, keeping the lower back flat.","Return and switch.","Teaches the core to stabilise — protects your back."]},
-  {id:"suitcase_carry",g:"core",name:"Suitcase carry",kit:["kettlebell","dumbbells"],
+  {id:"suitcase_carry",g:"core",name:"Suitcase carry",kit:["kettlebell","dumbbells"],grip:"carry",
    sets:3,reps:"30s / side",rest:45,
    cues:["Hold one heavy weight at your side, stand tall.","Walk slowly without leaning — the obliques fight the tilt.","Squeeze the opposite side to stay upright.","Brutal, simple oblique and grip builder."]},
 
@@ -711,6 +712,11 @@ const WARMUP = [
    cues:["Bend forward, grab under your toes.","Sink your hips into a deep squat, chest up.","Stand halfway to feel the hamstrings stretch, then sink again.","Mobilises ankles, hips and hamstrings together."]},
 ];
 function warmById(id){return WARMUP.find(w=>w.id===id)}
+// a warm-up move as an active constraint wants it shown (e.g. flat palm → handles)
+function warmView(w){
+  for(const c of (S.constraints?restricting():[])){const sw=cDef(c.id).swap[w.id]; if(sw)return Object.assign({},w,sw)}
+  return w;
+}
 
 /* =========================== STATE =========================== */
 const LS = "fitnessBuddy.v1";
@@ -718,7 +724,7 @@ let S = load();
 function load(){
   try{return JSON.parse(localStorage.getItem(LS))||{}}catch(e){return{}}
 }
-function save(){localStorage.setItem(LS,JSON.stringify(S));renderBackupBanner();renderBackupHint()}
+function save(){localStorage.setItem(LS,JSON.stringify(S));renderBackupBanner();renderBackupHint();renderConstraintBar()}
 S.weekNotes ??= "";
 S.weekItems ??= [];      // {text,done}
 S.log ??= [];            // {type,ts}
@@ -759,6 +765,371 @@ function missingFor(e){
   return miss;
 }
 
+/* =========================== INJURY CONSTRAINTS ===========================
+   Rules he already decided on, applied automatically — and set to expire.
+   A constraint that silently outlives the injury is a worse outcome than one
+   that ends early, so every entry carries a review date that blocks the
+   generator until he answers it.
+
+   The rules live here in code, so a fix ships to his phone with a deploy; only
+   the mutable state (ramp week, review date, cleared, history) lives in
+   S.constraints. The next football/padel injury is one more entry in
+   CONSTRAINT_DEFS, not a rebuild.
+
+   Deliberately absent: any copy telling him to stop training. Rest is what
+   prolonged the original episode — a flare drops the grip load and keeps
+   everything else going. */
+const DAY=86400000;
+// every date decision in this section reads nowMs(), so setting window.FB_NOW
+// (ms) in the console fast-forwards the whole constraint system for testing
+const nowMs=()=>window.FB_NOW??Date.now();
+const dayMs=iso=>new Date(iso+"T00:00:00").getTime();
+const isoDay=ms=>{const d=new Date(ms);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const cDay=ms=>new Date(ms).toLocaleDateString(undefined,{day:"numeric",month:"short"});
+const startOfDay=ms=>{const d=new Date(ms);d.setHours(0,0,0,0);return d.getTime()};
+
+const CONSTRAINT_DEFS=[{
+  id:"ecrb-left", label:"Left forearm (ECRB) — return to load", short:"Forearm",
+  onset:"2026-08-24", rampStart:"2026-11-08", reviewDate:"2026-12-06",
+  question:"Any forearm pain the morning after your last session?",
+  questionHint:"Only localised pain on the outside of the left elbow or forearm counts. General muscle soreness after weeks off is expected — that's detraining, not the tendon.",
+  /* Grip ramp. One week per stage at most, but a stage only advances after a
+     pain-free session at it — a calendar-only ramp would hand him 12 kg in
+     week 3 even if he never trained in week 2. db/kb = max kg per tool,
+     0 = tool off, null = no cap. block = exercise grip types kept out. */
+  stages:[
+    {name:"Bands + dumbbells ≤ 6 kg", db:6,    kb:0,    block:["carry"], note:"No kettlebells at all."},
+    {name:"+ 6 kg kettlebells",       db:6,    kb:6,    block:["carry"], note:"Short sets, no long holds."},
+    {name:"+ 12 kg kettlebell",       db:null, kb:12,   block:["carry"], note:"Swings and goblet work are fine — still no carries."},
+    {name:"Carries & longer holds",   db:null, kb:null, block:[],        note:"Grip unrestricted."}
+  ],
+  // kept out until cleared, whatever the ramp week; tag future forearm moves "forearm"
+  exclude:{ids:["hammer_curl","reverse_curl","dead_hang"], tags:["forearm"]},
+  // flat-palm loading swapped for handles or fists
+  swap:{w_scap_pushup:{name:"Scapular push-ups (on handles or fists)"}},
+  rehab:{name:"Eccentric wrist extension (left)", d:"3 × 15 · 2 kg handle", min:4,
+    cues:["Forearm on a table or your thigh, palm down, left hand over the edge.",
+          "Lift the weight up with your right hand — the left arm does nothing on the way up.",
+          "Lower it with the left hand alone over a slow 4-second count.",
+          "3 × 15 at ~1–2 kg (the empty 2 kg handle, or a water bottle). Target: match your right arm at equal load and reps."]},
+  flare:{days:7, name:"Isometric wrist-extension holds", d:"5 × 45 s, twice a day",
+    cues:["Forearm supported, palm down, left hand over the edge with a light weight — or press up into your other hand.",
+          "Hold the wrist level, pushing up into extension without moving, for 45 seconds.",
+          "5 holds, twice a day, for one week.",
+          "Keep training everything else. Rest is what dragged the original episode out."]},
+  returnWeeks:3,          // detraining block from rampStart, independent of the ramp
+  clearanceEvery:14,      // days between clearance check-ins
+  maintenanceDays:90,     // rehab stays on offer this long after clearance
+  criteria:[
+    {k:"fist", t:"Max-effort fist clench with a straight arm is pain-free"},
+    {k:"ecc",  t:"Eccentric wrist extension matches your right arm at equal load and reps, with no pain afterwards"},
+    {k:"grip", t:"A full grip-loaded session caused no next-morning forearm pain"}
+  ]
+}];
+
+/* Football is the fixed anchor: match on Sunday, season Aug–May, winter break
+   ~10 Dec – 10 Jan. Only used for a soft day-before-match nudge. */
+const MATCH={day:0, offMonths:[5,6], breakFrom:[11,10], breakTo:[0,10]};
+
+const cDef=id=>CONSTRAINT_DEFS.find(d=>d.id===id);
+const liveConstraints=()=>S.constraints.filter(c=>cDef(c.id));
+const restricting=()=>liveConstraints().filter(c=>!c.cleared);
+const cById=id=>S.constraints.find(c=>c.id===id);
+
+function seedConstraints(){
+  S.constraints=Array.isArray(S.constraints)?S.constraints:[];
+  S.constraintsRemoved=Array.isArray(S.constraintsRemoved)?S.constraintsRemoved:[];
+  CONSTRAINT_DEFS.forEach(d=>{
+    if(S.constraints.some(c=>c.id===d.id)||S.constraintsRemoved.includes(d.id))return;
+    S.constraints.push({id:d.id, rampStart:d.rampStart, reviewDate:d.reviewDate, cleared:false, clearedAt:null,
+      stage:0, override:null, judgedTs:0, mildStreak:0, flareUntil:null, lastClearance:null, criteria:{}, history:[]});
+  });
+}
+seedConstraints();
+// write straight through: save() re-renders UI that isn't defined yet at this point
+try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}
+
+function stageOf(c){
+  const n=cDef(c.id).stages.length-1;
+  return Math.max(0,Math.min(n,c.override!=null?c.override:c.stage));
+}
+const calWeek=c=>Math.floor((nowMs()-dayMs(c.rampStart))/(7*DAY));   // 0-based, negative before start
+function returnDay(c){ // 1-based day of the return-to-training block, or 0 when outside it
+  const t=nowMs()-dayMs(c.rampStart), len=cDef(c.id).returnWeeks*7*DAY;
+  return t>=0&&t<len?Math.floor(t/DAY)+1:0;
+}
+const returning=()=>liveConstraints().some(c=>returnDay(c)>0);
+const reviewDue=c=>!c.cleared&&nowMs()>=dayMs(c.reviewDate);
+const flareOn=c=>!!c.flareUntil&&nowMs()<c.flareUntil;
+const clearanceDue=c=>!c.cleared&&nowMs()-(c.lastClearance||dayMs(c.rampStart))>=cDef(c.id).clearanceEvery*DAY;
+const inMaintenance=c=>c.cleared&&c.clearedAt&&nowMs()<c.clearedAt+cDef(c.id).maintenanceDays*DAY;
+const rampSnapshot=()=>Object.fromEntries(restricting().map(c=>[c.id,stageOf(c)]));
+
+/* Why an exercise is held out right now, or "" when it's allowed. */
+function constraintBlock(e){
+  for(const c of restricting()){
+    const d=cDef(c.id), i=stageOf(c), st=d.stages[i];
+    if(d.exclude.ids.includes(e.id)||(e.tags||[]).some(t=>d.exclude.tags.includes(t)))
+      return `paused until your ${d.short.toLowerCase()} is cleared`;
+    if(e.grip&&st.block.includes(e.grip)) return `paused — grip ramp week ${i+1}`;
+    // a move that can only be loaded with a tool this stage switches off
+    const w=e.kit.filter(k=>WEIGHT_KEYS.includes(k)&&ownsKit(k));
+    if(w.length&&!e.kit.includes("bodyweight")&&w.every(k=>k==="kettlebell"?st.kb===0:st.db===0))
+      return `paused — grip ramp week ${i+1}`;
+  }
+  return "";
+}
+const exFits=e=>exAvailable(e)&&!constraintBlock(e);
+
+/* Heaviest load the grip ramp allows for this move, across every active constraint. */
+function gripCap(e){
+  if(!e)return null;
+  let cap=null, why="";
+  for(const c of restricting()){
+    const i=stageOf(c), st=cDef(c.id).stages[i], opts=[];
+    if(e.kit.includes("dumbbells")&&ownsKit("dumbbells")) opts.push(st.db??Infinity);
+    if(e.kit.includes("kettlebell")&&ownsKit("kettlebell")&&st.kb!==0) opts.push(st.kb??Infinity);
+    if(!opts.length)continue;
+    const m=Math.max(...opts);
+    if(m!==Infinity&&(cap==null||m<cap)){cap=m;why=`grip ramp week ${i+1}`}
+  }
+  return cap==null?null:{kg:cap,why};
+}
+
+function matchTomorrow(){
+  const d=new Date(nowMs()), m=d.getMonth(), day=d.getDate();
+  if((d.getDay()+1)%7!==MATCH.day||MATCH.offMonths.includes(m))return false;
+  const inBreak=(m===MATCH.breakFrom[0]&&day>=MATCH.breakFrom[1])||(m===MATCH.breakTo[0]&&day<MATCH.breakTo[1]);
+  return !inBreak;
+}
+
+/* ---------- the morning-after question ----------
+   Asked about the latest gym session since the ramp began that hasn't been
+   judged yet — and only once a morning has passed since it. */
+function pendingQuestion(){
+  const today=startOfDay(nowMs());
+  for(const c of restricting()){
+    const from=Math.max(c.judgedTs||0,dayMs(c.rampStart)-1);
+    const s=S.log.filter(l=>l.type==="gym"&&l.ts>from&&l.ts<today).pop();
+    if(s)return {c,s};
+  }
+  return null;
+}
+function dropBack(c){
+  c.stage=Math.max(0,c.stage-1); c.mildStreak=0;
+  c.flareUntil=nowMs()+cDef(c.id).flare.days*DAY;
+}
+function answerPain(cid,ans){
+  const c=cById(cid), d=cDef(cid), q=pendingQuestion();
+  if(!c||!q||q.c.id!==cid){closeSheet();generate();return}
+  const s=q.s, from=c.stage, last=d.stages.length-1;
+  const atStage=s.ramp&&s.ramp[cid]!=null?s.ramp[cid]:stageOf(c);
+  let msg;
+  if(ans==="none"){
+    c.mildStreak=0;
+    if(c.stage>=last) msg="Pain-free — grip is unrestricted.";
+    else if(atStage<c.stage) msg=`Pain-free — but that session was below week ${c.stage+1}, so you stay on it.`;
+    else if(calWeek(c)<=c.stage) msg=`Pain-free — week ${c.stage+2} opens ${cDay(dayMs(c.rampStart)+(c.stage+1)*7*DAY)}.`;
+    else {c.stage++; msg=`Pain-free — grip ramp moves to week ${c.stage+1}.`}
+  } else if(ans==="mild"){
+    c.mildStreak=(c.mildStreak||0)+1;
+    if(c.mildStreak>=2){dropBack(c); msg="Second reaction in a row — back one grip week, daily holds added. Keep training everything else."}
+    else msg=`Holding at grip week ${c.stage+1}.`;
+  } else {
+    dropBack(c); msg="Back one grip week, daily holds added. Keep training everything else.";
+  }
+  // stored against the session it judges
+  s.morningAfter=Object.assign({},s.morningAfter,{[cid]:ans});
+  c.judgedTs=s.ts;
+  c.history.push({ts:nowMs(),ans,from,to:c.stage});
+  c.history=c.history.slice(-30);
+  save(); closeSheet(); toast(msg);
+  generate();
+}
+function skipPain(ts){sessionStorage.setItem("fb.painSkip",String(ts));closeSheet();generate()}
+
+function openConstraintSheet(html){
+  document.getElementById("sheet").innerHTML=`<div class="grab"></div>${html}`;
+  document.getElementById("overlay").classList.add("show");
+  document.body.style.overflow="hidden";
+}
+function askPain(q){
+  const d=cDef(q.c.id);
+  const when=new Date(q.s.ts).toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"short"});
+  openConstraintSheet(`
+    <span class="pill grp">${I.arms} ${d.short} · grip week ${stageOf(q.c)+1} of ${d.stages.length}</span>
+    <h2 style="font-size:21px;margin:10px 0 6px">${d.question}</h2>
+    <p class="small muted" style="margin:0 0 14px">About your session on ${when}. ${d.questionHint}</p>
+    <button class="btn block" style="margin-bottom:8px" onclick="answerPain('${d.id}','none')">None</button>
+    <button class="btn block" style="margin-bottom:8px" onclick="answerPain('${d.id}','mild')">Mild — 4/10 or less</button>
+    <button class="btn block" style="margin-bottom:12px" onclick="answerPain('${d.id}','clear')">Clear — above 4/10, or still there</button>
+    <button class="btn ghost sm block" onclick="skipPain(${q.s.ts})">Skip — stay on this week for now</button>`);
+}
+
+/* ---------- review: the expiry mechanism ---------- */
+function openReview(cid){
+  const c=cById(cid), d=cDef(cid);
+  openConstraintSheet(`
+    <span class="pill warn">${I.flag} Review due</span>
+    <h2 style="font-size:21px;margin:10px 0 6px">Does this still apply?</h2>
+    <p class="small" style="margin:0 0 4px"><b>${d.label}</b></p>
+    <p class="small muted" style="margin:0 0 14px">Set to be reviewed on ${cDay(dayMs(c.reviewDate))}. It keeps restricting your sessions until you answer, so it can't quietly outlive the injury.</p>
+    <button class="btn block" style="margin-bottom:8px" onclick="reviewConstraint('${cid}','active')">Still active — review again in 4 weeks</button>
+    <button class="btn primary block" style="margin-bottom:8px" onclick="reviewConstraint('${cid}','resolved')">Resolved — lift the restrictions</button>
+    <button class="btn ghost block" onclick="reviewConstraint('${cid}','remove')">Remove it entirely</button>`);
+}
+function reviewConstraint(cid,choice){
+  const c=cById(cid); if(!c)return;
+  if(choice==="active"){c.reviewDate=isoDay(Math.max(nowMs(),dayMs(c.reviewDate))+28*DAY); toast(`Review moved to ${cDay(dayMs(c.reviewDate))}`)}
+  if(choice==="resolved"){c.cleared=true; c.clearedAt=nowMs(); toast("Cleared ✓ — restrictions lifted")}
+  if(choice==="remove"){
+    if(!confirm("Remove this constraint and its history entirely?"))return;
+    S.constraints=S.constraints.filter(x=>x.id!==cid);
+    S.constraintsRemoved=[...new Set([...(S.constraintsRemoved||[]),cid])];
+    toast("Constraint removed");
+  }
+  save(); closeSheet(); renderGroupList();
+}
+
+/* ---------- clearance check-in, every couple of weeks ---------- */
+function openClearance(cid){
+  const c=cById(cid), d=cDef(cid);
+  const rows=d.criteria.map(k=>`
+    <label class="row" style="gap:10px;align-items:flex-start;margin:0 0 12px;cursor:pointer">
+      <input type="checkbox" id="crit_${k.k}" ${c.criteria[k.k]?"checked":""} style="margin-top:3px;width:18px;height:18px;flex:none">
+      <span class="small">${k.t}</span>
+    </label>`).join("");
+  openConstraintSheet(`
+    <span class="pill grp">${I.check} ${d.short} · clearance check-in</span>
+    <h2 style="font-size:21px;margin:10px 0 6px">Which of these pass now?</h2>
+    <p class="small muted" style="margin:0 0 14px">Tick only what you've actually tested. All three clears the constraint.</p>
+    ${rows}
+    <div class="grid2" style="margin-top:6px">
+      <button class="btn ghost" onclick="dismissClearance('${cid}')">Not now</button>
+      <button class="btn primary" onclick="saveClearance('${cid}')">Save</button>
+    </div>`);
+}
+function saveClearance(cid){
+  const c=cById(cid), d=cDef(cid);
+  d.criteria.forEach(k=>{c.criteria[k.k]=document.getElementById("crit_"+k.k).checked});
+  c.lastClearance=nowMs();
+  const all=d.criteria.every(k=>c.criteria[k.k]);
+  if(all){c.cleared=true;c.clearedAt=nowMs()}
+  save(); closeSheet(); renderGroupList();
+  toast(all?"All three pass — cleared ✓":"Saved — next check-in in two weeks");
+}
+function dismissClearance(cid){sessionStorage.setItem("fb.clearDismissed."+cid,"1");closeSheet();renderConstraintBar()}
+
+function flaredUp(cid){
+  const c=cById(cid);
+  if(!confirm("Forearm pain above 4/10, or still there the next morning?\n\nThis drops the grip ramp back a week and adds daily isometric holds. Everything else keeps training."))return;
+  if(c.cleared){c.cleared=false;c.clearedAt=null;c.reviewDate=isoDay(nowMs()+28*DAY)}
+  const from=c.stage; dropBack(c);
+  c.history.push({ts:nowMs(),ans:"flare",from,to:c.stage});
+  save(); closeSheet(); renderGroupList();
+  toast(`Grip week ${c.stage+1} · daily holds for a week`);
+}
+function setRampOverride(cid,v){
+  const c=cById(cid); c.override=v===""?null:+v;
+  save(); renderGroupList(); openConstraintDetails(cid);
+}
+
+function openRehab(cid,kind){
+  const d=cDef(cid), r=kind==="flare"?d.flare:d.rehab;
+  const cues=r.cues.map((x,i)=>`<div class="cue"><span class="b">${i+1}</span><span>${x}</span></div>`).join("");
+  openConstraintSheet(`
+    <div class="row" style="margin-bottom:4px">
+      <span class="pill grp">${I.arms} ${kind==="flare"?"Daily holds":"Rehab"}</span>
+      <button class="btn sm ghost" style="margin-left:auto" onclick="closeSheet()">Close</button>
+    </div>
+    <h2 style="font-size:21px;margin:8px 0 6px">${r.name}</h2>
+    <div class="muted small" style="margin-bottom:4px">${r.d}</div>
+    <a class="demo-cta" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query=${yt(r.name.replace(/\s*\(.*\)/,""))}">
+      <div class="demo-play">${I.play}</div>
+      <div class="demo-meta"><div class="demo-title">Watch demo</div><div class="demo-sub">Top YouTube results · opens YouTube ↗</div></div>
+    </a>
+    <div class="section-title">How to do it</div>
+    ${cues}`);
+}
+
+function openConstraintDetails(cid){
+  const c=cById(cid), d=cDef(cid), cur=stageOf(c);
+  const stages=d.stages.map((s,i)=>`
+    <div class="row" style="gap:10px;margin:0 0 8px;align-items:flex-start;${i===cur?"":"opacity:.55"}">
+      <span class="pill ${i===cur?"accent":""}" style="flex:none">Wk ${i+1}</span>
+      <span class="small"><b>${s.name}</b> — ${s.note}</span>
+    </div>`).join("");
+  const crit=d.criteria.map(k=>`<div class="small" style="margin:0 0 6px">${c.criteria[k.k]?"✓":"○"} ${k.t}</div>`).join("");
+  const hist=c.history.slice(-5).reverse().map(h=>`<span class="pill">${cDay(h.ts)} · ${h.ans} · wk ${h.from+1}→${h.to+1}</span>`).join("");
+  const opts=[`<option value="">Auto (week ${c.stage+1})</option>`].concat(d.stages.map((s,i)=>
+    `<option value="${i}" ${c.override===i?"selected":""}>Force week ${i+1}</option>`)).join("");
+  openConstraintSheet(`
+    <div class="row" style="margin-bottom:4px">
+      <span class="pill grp">${I.arms} ${d.short}</span>
+      <button class="btn sm ghost" style="margin-left:auto" onclick="closeSheet()">Close</button>
+    </div>
+    <h2 style="font-size:20px;margin:8px 0 4px">${d.label}</h2>
+    <div class="small muted" style="margin-bottom:12px">${c.cleared?`Cleared ${cDay(c.clearedAt)}`:`Ramp from ${cDay(dayMs(c.rampStart))} · review ${cDay(dayMs(c.reviewDate))}`}</div>
+    ${c.cleared?"":`<div class="section-title" style="margin-top:0">Grip ramp</div>${stages}
+    <p class="small muted" style="margin:4px 0 8px">Moves up at most one week per calendar week, and only after a pain-free session at the current week.</p>
+    <select onchange="setRampOverride('${cid}',this.value)" style="width:100%">${opts}</select>
+    <div class="section-title">Held out until cleared</div>
+    <div class="small">Hammer curls, reverse curls, dead hangs, dedicated forearm work, flat-palm push-ups (use handles or fists).</div>`}
+    <div class="section-title">Clearance</div>${crit}
+    ${c.cleared?"":`<button class="btn sm ghost" style="margin-top:4px" onclick="openClearance('${cid}')">Check in now</button>`}
+    ${hist?`<div class="section-title">Recent</div><div class="wrap">${hist}</div>`:""}
+    <div class="divider"></div>
+    <div class="grid2">
+      <button class="btn ghost" onclick="flaredUp('${cid}')">${c.cleared?"It's back":"It flared up"}</button>
+      <button class="btn ghost" onclick="reviewConstraint('${cid}','remove')">Remove</button>
+    </div>`);
+}
+
+/* Home-screen strip: review (blocking) → flare holds → clearance → status. */
+function renderConstraintBar(){
+  const el=document.getElementById("constraintBar");
+  if(!el||!S.constraints)return;
+  let h="";
+  for(const c of liveConstraints()){
+    const d=cDef(c.id);
+    if(reviewDue(c)){
+      h+=`<div class="up-note" style="margin:0 0 12px"><b>${I.flag} Review your ${d.short.toLowerCase()} constraint</b><br>
+        <span class="small">It was due on ${cDay(dayMs(c.reviewDate))}. Sessions stay on hold until you say whether it still applies.</span>
+        <button class="btn block" style="margin-top:10px" onclick="openReview('${c.id}')">Answer now</button></div>`;
+      continue;
+    }
+    if(flareOn(c)){
+      const left=Math.ceil((c.flareUntil-nowMs())/DAY);
+      h+=`<div class="up-note" style="margin:0 0 12px" onclick="openRehab('${c.id}','flare')"><b>${I.arms} Today: ${d.flare.name.toLowerCase()}</b><br>
+        <span class="small">${d.flare.d} · ${left} day${left===1?"":"s"} left. Separate from your sessions — keep training everything else.</span></div>`;
+    }
+    if(clearanceDue(c)&&sessionStorage.getItem("fb.clearDismissed."+c.id)!=="1"){
+      h+=`<div class="card" style="margin:0 0 12px;padding:12px 13px"><div class="row"><span class="small"><b>${d.short} clearance check-in</b> — three quick tests.</span>
+        <button class="btn sm" style="margin-left:auto" onclick="openClearance('${c.id}')">Check in</button></div></div>`;
+    }
+    if(c.cleared){
+      if(inMaintenance(c)) h+=`<div class="small muted" style="margin:0 0 12px" onclick="openConstraintDetails('${c.id}')">${I.check} ${d.short} cleared · optional rehab stays in sessions until ${cDay(c.clearedAt+d.maintenanceDays*DAY)}</div>`;
+      continue;
+    }
+    const i=stageOf(c), rd=returnDay(c);
+    h+=`<div class="card" style="margin:0 0 12px;padding:12px 13px" onclick="openConstraintDetails('${c.id}')">
+      <div class="row"><b style="font-size:14px">${I.arms} ${d.short}</b>
+        <span class="pill ${c.override!=null?"warn":"accent"}" style="margin-left:auto">grip week ${i+1}/${d.stages.length}${c.override!=null?" · forced":""}</span></div>
+      <div class="small muted" style="margin-top:6px">${d.stages[i].name}${rd?` · return block day ${rd}/${d.returnWeeks*7}`:""} · review ${cDay(dayMs(c.reviewDate))}</div></div>`;
+  }
+  el.innerHTML=h;
+}
+
+/* Gate in front of the generator: an overdue review blocks it outright; an
+   unanswered morning-after question is asked first. */
+function constraintGate(){
+  const r=liveConstraints().find(reviewDue);
+  if(r){openReview(r.id);return true}
+  const q=pendingQuestion();
+  if(q&&sessionStorage.getItem("fb.painSkip")!==String(q.s.ts)){askPain(q);return true}
+  return false;
+}
+
 /* =========================== NAV =========================== */
 document.querySelectorAll("#nav button").forEach(b=>{
   b.onclick=()=>setView(b.dataset.view);
@@ -768,7 +1139,7 @@ function setView(v){
   document.getElementById("view-"+v).classList.add("active");
   document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.view===v));
   window.scrollTo(0,0);
-  if(v==="generate")renderWeekStrip();
+  if(v==="generate"){renderWeekStrip();renderConstraintBar()}
   if(v==="tracker"){renderTracker();renderGoals()}
   if(v==="week")renderWeek();
   if(v==="settings"){renderGear();renderProfile();renderGoalSetup()}
@@ -803,6 +1174,7 @@ function openEx(id){
     </div>
     <h2 style="font-size:21px;margin:8px 0 6px">${e.name}</h2>
     <div class="muted small" style="margin-bottom:4px">${spec}</div>
+    ${constraintBlock(e)?`<div class="up-note" style="margin:8px 0">${I.arms} <b>${constraintBlock(e)[0].toUpperCase()+constraintBlock(e).slice(1)}.</b> The generator leaves it out for now.</div>`:""}
     <a class="demo-cta" target="_blank" rel="noopener" href="${e.video?`https://www.youtube.com/watch?v=${e.video}`:`https://www.youtube.com/results?search_query=${yt(e.name)}`}">
       <div class="demo-play">${I.play}</div>
       <div class="demo-meta">
@@ -821,7 +1193,7 @@ function openEx(id){
   document.body.style.overflow="hidden";
 }
 function openWarm(id){
-  const w=warmById(id); if(!w)return;
+  const w0=warmById(id); if(!w0)return; const w=warmView(w0);
   const sheet=document.getElementById("sheet");
   const cues=w.cues.map((c,i)=>`<div class="cue"><span class="b">${i+1}</span><span>${c}</span></div>`).join("");
   sheet.innerHTML=`
@@ -866,14 +1238,15 @@ function renderGroupList(){
       ? `<div class="pill" style="margin-bottom:10px">Maintenance only — football covers your legs</div>`
       : `<div class="pill" style="margin-bottom:10px">Sidequest — do a little, often</div>`;
   document.getElementById("groupList").innerHTML = intro + list.map(e=>{
-    const ok=exAvailable(e);
+    const ok=exAvailable(e), why=constraintBlock(e);
     return `
-    <div class="ex ${ok?'':'unavail'}" onclick="openEx('${e.id}')">
+    <div class="ex ${ok&&!why?'':'unavail'}" onclick="openEx('${e.id}')">
       <div class="play">${I.play}</div>
       <div class="meta">
         <div class="nm">${e.name}</div>
         <div class="sub">${e.sets} × ${e.reps}${e.rest>0?` · ${e.rest}s rest`:""}${e.upgrade?` · ${I.tag}`:''}</div>
         ${ok?'':`<div class="small" style="margin-top:4px;color:var(--warn)">needs ${missingFor(e).join(", ")}</div>`}
+        ${why?`<div class="small" style="margin-top:4px;color:var(--warn)">${why}</div>`:''}
       </div>
     </div>`}).join("");
 }
@@ -911,6 +1284,7 @@ function pick(arr,n,exclude=[]){ // pick n random, avoid excluded ids, prefer va
 }
 
 function generate(){
+  if(constraintGate())return;
   const wk=thisWeekLog();
   const gym=wk.filter(l=>l.type==="gym").length;
   // sport demand: logged football/padel/running (km-scaled) + planned sessions from the This Week planner
@@ -931,7 +1305,8 @@ function generate(){
   if(genFocus==="auto"){
     groups=["chest","shoulders","arms","back","core"];
     // legs only when weekly leg load is light (short run ≈ 0.6; a match ≈ 1.4 blocks them)
-    if(legLoad<1) groups.push("legs");
+    // and never the day before a match
+    if(legLoad<1&&!matchTomorrow()) groups.push("legs");
   } else {
     groups=[...FOCUSES[genFocus].groups];
   }
@@ -945,10 +1320,10 @@ function generate(){
   const warm=WARMUP.filter(w=>!w.kit||w.kit.every(ownsKit)).sort(()=>Math.random()-.5).slice(0,nWarm);
   // cool-down: mobility, 3 for 45 / 4 for 60
   const nCool=genDur===45?3:4;
-  const cool=pick(EX.filter(e=>e.g==="mobility"&&exAvailable(e)), nCool);
+  const cool=pick(EX.filter(e=>e.g==="mobility"&&exFits(e)), nCool);
 
   const sessionGroups=[...new Set(mains.map(m=>m.g))];
-  S.lastSession={dur:genDur,focus:genFocus,mains:mains.map(m=>m.id),groups:sessionGroups,ts:Date.now()};
+  S.lastSession={dur:genDur,focus:genFocus,mains:mains.map(m=>m.id),groups:sessionGroups,ts:Date.now(),ramp:rampSnapshot()};
   save();
   renderSession(warm,mains,cool,{sport,planned,legLoad,gym,groups,rotated:doneEx.size>0});
 }
@@ -966,7 +1341,7 @@ function pickMains(groups,n,doneGroupCount={},doneEx=new Set()){
 
   const queue={};
   order.forEach(g=>{
-    const all=EX.filter(e=>e.g===g&&exAvailable(e));
+    const all=EX.filter(e=>e.g===g&&exFits(e));
     const fresh=all.filter(e=>!doneEx.has(e.id)).sort(()=>Math.random()-.5);
     const used=all.filter(e=>doneEx.has(e.id)).sort(()=>Math.random()-.5);
     queue[g]=fresh.concat(used); // prefer fresh, fall back to repeats only if needed
@@ -988,7 +1363,15 @@ function pickMains(groups,n,doneGroupCount={},doneEx=new Set()){
 function renderSession(warm,mains,cool,ctx){
   const warmMin=ctx?.dur===60?9:7;
   const coolMin=8;
-  const mainMin=genDur-warmMin-coolMin;
+  // injected rehab: required while a constraint restricts, optional during maintenance
+  const rehabs=liveConstraints().filter(c=>!c.cleared||inMaintenance(c));
+  const rehabMin=rehabs.reduce((t,c)=>t+cDef(c.id).rehab.min,0);
+  const mainMin=genDur-warmMin-coolMin-rehabMin;
+  const ret=liveConstraints().map(returnDay).find(x=>x>0)||0;
+  const cNotes=restricting().map(c=>{const d=cDef(c.id),i=stageOf(c);
+    return `${d.short}: grip week ${i+1} — ${d.stages[i].name}. ${d.stages[i].note}`});
+  if(ret)cNotes.push(`Return block, day ${ret} of 21: about 60% of your old loads on every move, stop 3–4 reps short of failure, no max sets. Two sessions a week is the target. Heavy soreness after the first one is normal detraining.`);
+  if(matchTomorrow())cNotes.push("Match tomorrow — legs are out; keep it crisp.");
   const trained=[...new Set(mains.map(m=>GROUPS[m.g].name))].join(" · ");
   let note="";
   if(genFocus==="auto"){
@@ -1005,7 +1388,7 @@ function renderSession(warm,mains,cool,ctx){
   const rotNote = (ctx&&ctx.rotated)
     ? "Skipped exercises you already did this week and leaned toward your least-trained muscle groups."
     : "";
-  const warmHTML=warm.map(w=>`
+  const warmHTML=warm.map(warmView).map(w=>`
     <div class="ex" onclick="openWarm('${w.id}')">
       <div class="idx">•</div>
       <div class="meta"><div class="nm" style="font-size:14.5px">${w.name}</div><div class="sub">${w.d}</div></div>
@@ -1035,6 +1418,7 @@ function renderSession(warm,mains,cool,ctx){
       <div class="small muted" style="margin-top:6px">${trained}</div>
       ${note?`<div class="small" style="margin-top:8px;color:var(--accent2)">${I.idea} ${note}</div>`:""}
       ${rotNote?`<div class="small" style="margin-top:6px;color:var(--accent)">${I.rotate} ${rotNote}</div>`:""}
+      ${cNotes.map(n=>`<div class="small" style="margin-top:6px">${I.arms} ${n}</div>`).join("")}
       <button class="btn sm block" style="margin-top:12px" onclick="logGeneratedDone()">✓ Mark this done &amp; log it</button>
     </div>
     <div class="timeline-block warm">
@@ -1044,9 +1428,19 @@ function renderSession(warm,mains,cool,ctx){
     </div>
     <div class="timeline-block">
       <h4>${I.dumbbell} Main block <span class="t">~${mainMin} min</span></h4>
-      <p class="small muted" style="margin:2px 0 10px">Rest as listed. Tap any move for the demo + cues. Push the last 2 reps.</p>
+      <p class="small muted" style="margin:2px 0 10px">Rest as listed. Tap any move for the demo + cues. ${ret?"Stop 3–4 reps short of failure — no max sets.":"Push the last 2 reps."}</p>
       ${mainHTML}
     </div>
+    ${rehabs.map(c=>{const d=cDef(c.id),r=d.rehab,opt=c.cleared;return `
+    <div class="timeline-block">
+      <h4>${I.arms} ${opt?"Optional maintenance":"Rehab"} <span class="t">~${r.min} min</span></h4>
+      <p class="small muted" style="margin:2px 0 10px">${opt?`Your ${d.short.toLowerCase()} is cleared — worth keeping twice a week until ${cDay(c.clearedAt+d.maintenanceDays*DAY)}.`:`In every session until your ${d.short.toLowerCase()} is cleared. Replaces any dedicated forearm work.`}</p>
+      <div class="ex" onclick="openRehab('${c.id}','rehab')">
+        <div class="idx">•</div>
+        <div class="meta"><div class="nm" style="font-size:14.5px">${r.name}</div><div class="sub">${r.d}</div></div>
+        <div class="play">${I.play}</div>
+      </div>
+    </div>`}).join("")}
     <div class="timeline-block cool">
       <h4>${I.cool} Cool-down &amp; mobility <span class="t">~${coolMin} min</span></h4>
       <p class="small muted" style="margin:2px 0 10px">Your longevity sidequest. Breathe, don't force it.</p>
@@ -1210,7 +1604,12 @@ function weightSuggestion(id){
   const kbOnly=hasKb&&!ex.kit.includes("dumbbells");
   const kbMax=S.profile.kbMaxKg||12, dbMax=S.profile.dbMaxKg||10;
   const ceiling=hasKb?Math.max(kbMax,kbOnly?kbMax:dbMax):dbMax;
+  const cap=gripCap(ex);
+  if(cap&&last>cap.kg)return {last,streak,msg:`${cap.why} caps this at ${cap.kg} kg — drop to ${cap.kg} for now`};
+  if(cap&&last===cap.kg)return {last,streak,msg:`${cap.why} caps this at ${cap.kg} kg — add reps or slow the tempo`};
   if(last>=ceiling)return {last,streak,msg:`at your ${ceiling} kg max — add reps or slow the tempo`};
+  // return-to-training block: hold the load, effort is capped instead
+  if(streak>=2&&returning())return {last,streak,msg:"return block — hold this weight, stop 3–4 reps short"};
   if(streak>=2){
     const next=kbOnly?kbMax:Math.min(ceiling,last+1);   // bells are discrete, plates aren't
     return {last,streak,next};
@@ -1219,7 +1618,8 @@ function weightSuggestion(id){
 }
 function weightHint(id){
   const s=weightSuggestion(id);
-  if(!s)return `first time — log your kg`;
+  if(!s){const cap=gripCap(exById(id));
+    return cap?`first time — start light, max ${cap.kg} kg (${cap.why})`:returning()?`first time — start light`:`first time — log your kg`}
   if(s.next)return `Last: ${s.last} kg ×${s.streak} · <b>try ${s.next} kg</b>`;
   if(s.msg)return `Last: ${s.last} kg · <b>${s.msg}</b>`;
   return `Last: ${s.last} kg`;
@@ -1304,7 +1704,7 @@ function logGeneratedDone(){
     const v=parseFloat((inp.value||"").replace(",","."));
     if(!isNaN(v)&&v>0){wts[inp.dataset.ex]=v; saveWeight(inp.dataset.ex,v); nW++;}
   });
-  S.log.push({type:"gym",ts:Date.now(),groups:ls.groups||[],exercises:ls.mains||[],weights:wts});
+  S.log.push({type:"gym",ts:Date.now(),groups:ls.groups||[],exercises:ls.mains||[],weights:wts,ramp:rampSnapshot()});
   save(); updateSpark(); renderWeekStrip();
   if(document.getElementById("view-tracker").classList.contains("active"))renderTracker();
   toast(nW?`✓ Logged with ${nW} weight${nW>1?"s":""}`:"✓ Session logged");
@@ -1339,7 +1739,7 @@ function toggleGymGroup(k){
 }
 function confirmGymManual(){
   if(!_gymPick.size){toast("Pick at least one group");return}
-  S.log.push({type:"gym",ts:Date.now(),groups:[..._gymPick],exercises:[]});
+  S.log.push({type:"gym",ts:Date.now(),groups:[..._gymPick],exercises:[],ramp:rampSnapshot()});
   save(); closeSheet(); updateSpark(); renderWeekStrip();
   if(document.getElementById("view-tracker").classList.contains("active"))renderTracker();
   toast("✓ Gym logged");
@@ -1777,6 +2177,7 @@ function importData(ev){
       S.profile=(S.profile&&typeof S.profile==="object"&&!Array.isArray(S.profile))?S.profile:{};
       S.profile.weightKg??=null; S.profile.heightCm??=null; S.profile.age??=32;
       S.profile.dbMaxKg??=10; S.profile.kbMaxKg??=12;
+      seedConstraints();   // older backups predate injury constraints
       // What's in the browser now matches a file you're holding, so this
       // counts as backed up — regardless of when the file was written.
       S.lastBackup=Date.now();
@@ -1934,7 +2335,9 @@ document.querySelectorAll("[data-ic]").forEach(el=>{
 });
 renderGroupTabs(); renderGroupList(); renderFocus(); updateSpark(); renderWeekStrip();
 renderBackupBanner(); renderBackupHint(); renderProfile();
-renderGoals(); renderGoalSetup();
+renderGoals(); renderGoalSetup(); renderConstraintBar();
+// first open past a review date: ask before anything else
+{const r=liveConstraints().find(reviewDue); if(r)openReview(r.id)}
 // the share route only exists where the OS offers a share sheet (mostly phones)
 if(canShareFiles())document.querySelectorAll("[data-share-backup]").forEach(el=>{el.style.display=""});
 document.getElementById("genHint").textContent="Tip: log your football & gym sessions in the Tracker — the generator reads them to balance your week.";
