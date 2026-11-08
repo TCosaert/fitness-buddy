@@ -305,7 +305,8 @@ input:focus,textarea:focus,select:focus{outline:3px solid var(--red);outline-off
 .wcol.under{border:2px solid transparent;background:transparent}   /* red label only — a box per group was too loud */
 .wcol.under .wname{color:var(--accent);font-weight:700}
 .wname{font-family:var(--mono);font-size:8.5px;color:var(--txt)}
-.wd{border-radius:0;width:7px;height:7px;background:transparent;border:1.5px solid var(--line)}
+.wd{border-radius:0;width:7px;height:7px;background:transparent;border:1.5px solid #c9c4bb}
+.wd.plan{border-color:var(--accent);background:transparent}
 .wd.on{background:var(--red);border-color:var(--line)}
 .wd.cardio.on{background:#0d0d0d;border-color:var(--line)}
 .bar{border-radius:0;height:12px;background:var(--card2);border:2px solid var(--line)}
@@ -1595,6 +1596,8 @@ const SPORT_LOAD={
    "crunches" contains "run" and silently registered a 5 km run, and a second
    distance on the same line was never seen. Planned sessions are structured
    now, so nothing is inferred. Returns per-group load + what was planned. */
+// open plans for this calendar week; a dated plan (from the calendar) only counts in its own week
+const thisWeekPlans=()=>(S.weekItems||[]).filter(i=>!i.done&&i.type&&(!i.date||weekKey(dayMs(i.date))===weekKey()));
 function weekSportLoad(){
   const load={};
   const add=(type,mult,km)=>{
@@ -1607,8 +1610,7 @@ function weekSportLoad(){
   thisWeekLog().forEach(l=>{ if(SPORT_LOAD[l.type]) add(l.type,1,l.km); });
 
   const planned=[];
-  // a dated plan (from the calendar) only counts in the week it falls in
-  (S.weekItems||[]).filter(i=>!i.done&&i.type&&(!i.date||weekKey(dayMs(i.date))===weekKey())).forEach(i=>{
+  thisWeekPlans().forEach(i=>{
     if(SPORT_LOAD[i.type]) add(i.type,PLAN_WEIGHT,i.km);
     // a planned gym session counts toward the groups it intends to train
     else if(i.type==="gym") (i.groups||[]).forEach(g=>load[g]=(load[g]||0)+PLAN_WEIGHT);
@@ -1790,22 +1792,30 @@ function renderWeekStrip(){
   // raw trained volume per group (legs also covered by cardio)
   const vol={};
   groups.forEach(g=>vol[g]=(cnt[g]||0)+(g==="legs"?cardio:0));
-  const maxVol=Math.max(...groups.map(g=>vol[g]));
+  // planned but not done, this calendar week only — the same set weekSportLoad()
+  // feeds the generator, so the strip shows exactly what the generator sees
+  const plan={};
+  thisWeekPlans().forEach(i=>{
+    if(i.type==="gym")(i.groups||[]).forEach(g=>plan[g]=(plan[g]||0)+1);
+    else if(isLegCardio(i.type))plan.legs=(plan.legs||0)+1;
+  });
+  const maxVol=Math.max(...groups.map(g=>vol[g]+(plan[g]||0)));
+  const anyPlan=Object.keys(plan).length>0;
   const cols=groups.map(g=>{
     const isLeg=g==="legs";
-    const n=Math.min(vol[g],3);
-    // flag the emptiest groups once you've trained anything this week
-    const under=maxVol>0 && vol[g]===0;
+    const n=Math.min(vol[g],3), p=Math.min(plan[g]||0,3-n);
+    // red only when a group has nothing done AND nothing planned
+    const under=maxVol>0 && vol[g]===0 && !plan[g];
     let dots="";
-    for(let i=0;i<3;i++)dots+=`<span class="wd ${isLeg?'cardio':''} ${i<n?'on':''}"></span>`;
+    for(let i=0;i<3;i++)dots+=`<span class="wd ${isLeg?'cardio':''} ${i<n?'on':i<n+p?'plan':''}"></span>`;
     return `<div class="wcol ${under?'under':''}"><div class="wlbl">${GROUPS[g].icon}</div><div class="wdots">${dots}</div><div class="wname">${GROUPS[g].name.split(" ")[0]}</div></div>`;
   }).join("");
-  const any=maxVol>0;
-  const underN=groups.filter(g=>maxVol>0&&vol[g]===0).length;
+  const any=maxVol>0;   // logged or planned
+  const underN=groups.filter(g=>maxVol>0&&vol[g]===0&&!plan[g]).length;
   document.getElementById("weekStrip").innerHTML=`
     <div class="card" style="padding:13px 14px">
       <div class="row" style="margin-bottom:10px"><b style="font-size:13px">This week so far</b>
-        <span class="small muted" style="margin-left:auto">${any?(underN?`<span style="color:var(--accent)">red</span> = nothing yet`:"trained volume"):"nothing logged yet"}</span></div>
+        <span class="small muted" style="margin-left:auto">${any?[anyPlan&&`<span class="wd plan" style="display:inline-block"></span> planned`,underN&&`<span style="color:var(--accent)">red</span> = nothing yet`].filter(Boolean).join(" · ")||"trained volume":"nothing logged yet"}</span></div>
       <div class="wstrip">${cols}</div>
     </div>`;
 }
