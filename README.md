@@ -23,7 +23,6 @@ and **Import** to restore it — including when moving to a new phone.
 | File | Purpose |
 | --- | --- |
 | `index.html` | The entire app |
-| `index-v2.html` | Design-polish draft, kept feature-synced |
 | `manifest.json` | PWA metadata (name, icons, standalone display) |
 | `sw.js` | Service worker — offline caching and installability |
 | `icon-*.png`, `icon.svg` | App icons |
