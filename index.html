@@ -334,7 +334,8 @@ input:focus,textarea:focus,select:focus{outline:3px solid var(--red);outline-off
 .grab{border-radius:0;background:#0d0d0d;height:3px}
 .cue{font-size:14.5px}
 .cue .b{color:var(--accent);font-family:var(--mono)}
-.toast{border-radius:0;background:#0d0d0d;color:var(--ink);border:2px solid var(--red);box-shadow:none;font-family:var(--mono);font-size:12.5px;text-transform:uppercase}
+.toast{border-radius:0;background:#0d0d0d;color:var(--ink);border:2px solid var(--red);box-shadow:none;font-family:var(--mono);font-size:12.5px;text-transform:uppercase;
+  white-space:normal;text-align:center;width:max-content;max-width:calc(100% - 32px);line-height:1.35}
 .demo-cta{border-radius:0;background:#0d0d0d;border:var(--rule)}
 .demo-title{color:var(--ink);text-transform:uppercase;font-family:var(--display);font-weight:400;font-size:22px;letter-spacing:.02em}
 .demo-sub{color:#bdb8b0;font-family:var(--mono);font-size:11px}
@@ -365,6 +366,7 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
 <section class="view active" id="view-generate">
   <div id="backupBanner"></div>
   <div id="constraintBar"></div>
+  <div id="coreDue"></div>
   <div id="weekStrip"></div>
 
   <label class="fld">Time available</label>
@@ -377,6 +379,7 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
   <div class="grid2" id="focusGrid" style="margin-bottom:16px"></div>
 
   <button class="btn primary block" style="padding:15px;font-size:16px" data-ic="bolt" onclick="generate()">Generate session</button>
+  <button class="btn block" style="margin-top:10px" data-ic="core" onclick="generateCore10()">Core 10 · 10 min, no weights</button>
   <div class="hint" id="genHint"></div>
 
   <div id="genResult" style="margin-top:18px"></div>
@@ -426,6 +429,8 @@ svg.i{width:1em;height:1em;display:inline-block;vertical-align:-.14em;flex:none;
   <div class="advice" id="weekAdvice"></div>
   <div class="section-title">Goals</div>
   <div id="goalsList"></div>
+  <div class="section-title">Core test</div>
+  <div id="coreTest"></div>
   <div class="section-title">Log a session</div>
   <div class="grid2">
     <button class="btn" data-ic="dumbbell" onclick="logGymManual()">Gym</button>
@@ -684,6 +689,9 @@ const EX = [
   {id:"dead_bug",g:"core",name:"Dead bug",kit:["bodyweight"],
    sets:3,reps:"10 / side",rest:40,
    cues:["On your back, arms up, knees over hips.","Slowly extend opposite arm and leg, keeping the lower back flat.","Return and switch.","Teaches the core to stabilise — protects your back."]},
+  {id:"side_plank",g:"core",name:"Side plank (on elbow)",kit:["bodyweight"],
+   sets:3,reps:"20–40s / side",rest:30,
+   cues:["Elbow under the shoulder, feet stacked (or staggered to make it easier).","Lift the hips until your body is one straight line from head to heels.","Don't let the hips drop or roll back — squeeze the glute on the top side.","Resisting sideways collapse is exactly what your obliques do in a tackle."]},
   {id:"suitcase_carry",g:"core",name:"Suitcase carry",kit:["kettlebell","dumbbells"],grip:"carry",
    sets:3,reps:"30s / side",rest:45,
    cues:["Hold one heavy weight at your side, stand tall.","Walk slowly without leaning — the obliques fight the tilt.","Squeeze the opposite side to stay upright.","Brutal, simple oblique and grip builder."]},
@@ -758,7 +766,7 @@ let S = load();
 function load(){
   try{return JSON.parse(localStorage.getItem(LS))||{}}catch(e){return{}}
 }
-function save(){localStorage.setItem(LS,JSON.stringify(S));renderBackupBanner();renderBackupHint();renderConstraintBar()}
+function save(){localStorage.setItem(LS,JSON.stringify(S));renderBackupBanner();renderBackupHint();renderConstraintBar();renderCoreTest()}
 S.weekNotes ??= "";
 S.weekItems ??= [];      // {text,done}
 S.log ??= [];            // {type,ts}
@@ -944,7 +952,7 @@ function pendingQuestion(){
   const today=startOfDay(nowMs());
   for(const c of restricting()){
     const from=Math.max(c.judgedTs||0,dayMs(c.rampStart)-1);
-    const s=S.log.filter(l=>l.type==="gym"&&l.ts>from&&l.ts<today).pop();
+    const s=S.log.filter(l=>l.type==="gym"&&!l.core10&&l.ts>from&&l.ts<today).pop();   // Core 10 has no grip load
     if(s)return {c,s};
   }
   return null;
@@ -1164,6 +1172,206 @@ function constraintGate(){
   return false;
 }
 
+/* =========================== CORE PROGRAMME ===========================
+   He called his core "ridiculously weak". Core responds to frequency more
+   than to intensity, and his gym sessions are rare, so three pieces:
+
+   - Core 10: a standalone ~10-min session on a 6-level ladder covering
+     anti-extension, anti-lateral-flexion, anti-rotation and bracing. One tap
+     of feedback afterwards moves the level (easy +1, right twice +1, hard −1),
+     so difficulty tracks him without any typing.
+   - Core test: plank, side plank (both sides), dead bug. Retest every 4 weeks.
+   - Core priority: every generated gym session includes core until a retest
+     beats the FIRST test by CORE_GAIN on all three. With no test (or only a
+     baseline) we can't know it improved, so priority stays on.
+
+   Planks are on the forearms, not the push-up handles: zero wrist or grip
+   load while the left forearm is on its ramp. */
+const CORE_GAIN=0.25, CORE_RETEST_DAYS=28;
+const CORE_LADDER=[
+  // [dead-bug slot, side-plank slot, pallof slot, plank slot]
+  [{id:"dead_bug",name:"Dead bug — knees bent",rx:"3 × 8 / side"},
+   {id:"side_plank",name:"Side plank — on elbow",rx:"3 × 20 s / side"},
+   {id:"pallof",name:"Pallof press — 2 s hold",rx:"3 × 10 / side"},
+   {id:"plank",name:"Forearm plank",rx:"3 × 30 s"}],
+  [{id:"dead_bug",name:"Dead bug — knees bent",rx:"3 × 10 / side"},
+   {id:"side_plank",name:"Side plank — on elbow",rx:"3 × 25 s / side"},
+   {id:"pallof",name:"Pallof press — 2 s hold",rx:"3 × 12 / side"},
+   {id:"plank",name:"Forearm plank",rx:"3 × 40 s"}],
+  [{id:"dead_bug",name:"Dead bug — legs straighter",rx:"3 × 8 / side"},
+   {id:"side_plank",name:"Side plank — on elbow",rx:"3 × 30 s / side"},
+   {id:"pallof",name:"Pallof press — step further out, 3 s hold",rx:"3 × 12 / side"},
+   {id:"plank",name:"Forearm plank",rx:"3 × 45 s"}],
+  [{id:"dead_bug",name:"Dead bug — legs straight",rx:"3 × 10 / side"},
+   {id:"side_plank",name:"Side plank — top leg lifted",rx:"3 × 20 s / side"},
+   {id:"pallof",name:"Pallof press + overhead reach",rx:"3 × 10 / side"},
+   {id:"plank",name:"Forearm plank — alternating arm reach",rx:"3 × 10 / side"}],
+  [{id:"hollow_hold",name:"Hollow hold",rx:"3 × 20 s"},
+   {id:"side_plank",name:"Side plank — top leg lifted",rx:"3 × 30 s / side"},
+   {id:"pallof",name:"Pallof press + overhead reach",rx:"3 × 12 / side"},
+   {id:"plank",name:"Forearm plank — alternating arm reach",rx:"3 × 14 / side"}],
+  [{id:"hollow_hold",name:"Hollow hold",rx:"3 × 30 s"},
+   {id:"side_plank",name:"Side plank — top leg lifted",rx:"3 × 40 s / side"},
+   {id:"leg_raise",name:"Lying leg raise — 3 s down",rx:"3 × 12"},
+   {id:"plank",name:"Forearm plank — alternating arm reach",rx:"3 × 20 / side"}]
+];
+const CORE_TESTS=[
+  {k:"plank",label:"Forearm plank",unit:"s",how:"Max hold. Stop the moment your hips sag or pike."},
+  {k:"sideL",label:"Side plank — left",unit:"s",how:"On the elbow, body in one line. Max hold."},
+  {k:"sideR",label:"Side plank — right",unit:"s",how:"Same, other side."},
+  {k:"deadbug",label:"Dead bug",unit:"reps",how:"Alternating reps, each side counts one. Stop when your lower back lifts off the floor."}
+];
+function normCore(){
+  S.core=(S.core&&typeof S.core==="object"&&!Array.isArray(S.core))?S.core:{};
+  S.core.level=Math.max(1,Math.min(CORE_LADDER.length,+S.core.level||1));
+  S.core.rightStreak=+S.core.rightStreak||0;
+  S.coreTests=Array.isArray(S.coreTests)?S.coreTests:[];
+}
+normCore();
+
+const sideMin=t=>Math.min(t.sideL||0,t.sideR||0);   // the weak side is the one that matters
+function coreGains(){
+  const t=S.coreTests; if(t.length<2)return null;
+  const a=t[0], b=t[t.length-1], g=(x,y)=>x>0?(y-x)/x:(y>0?1:0);
+  return {plank:g(a.plank,b.plank), side:g(sideMin(a),sideMin(b)), deadbug:g(a.deadbug,b.deadbug)};
+}
+function corePriority(){
+  const g=coreGains();
+  return !g||!(g.plank>=CORE_GAIN&&g.side>=CORE_GAIN&&g.deadbug>=CORE_GAIN);
+}
+const lastCoreTest=()=>S.coreTests[S.coreTests.length-1]||null;
+function coreTestDue(){ // "baseline" | "retest" | null
+  const t=lastCoreTest();
+  if(!t)return "baseline";
+  return Date.now()-t.ts>=CORE_RETEST_DAYS*DAY?"retest":null;
+}
+
+/* ---------- Core 10 ---------- */
+function generateCore10(){
+  const lvl=S.core.level, moves=CORE_LADDER[lvl-1];
+  const rows=moves.map((m,i)=>`
+    <div class="ex" onclick="openEx('${m.id}')">
+      <div class="idx">${i+1}</div>
+      <div class="meta"><div class="nm" style="font-size:14.5px">${m.name}</div>
+        <div class="sub">${m.rx} · ~30 s rest</div></div>
+      <div class="play">${I.play}</div>
+    </div>`).join("");
+  document.getElementById("genResult").innerHTML=`
+    <div class="card" style="border-width:3px">
+      <div class="row">
+        <h3 style="font-size:30px">Core 10</h3>
+        <span class="pill accent" style="margin-left:auto">Level ${lvl} / ${CORE_LADDER.length}</span>
+      </div>
+      <div class="small muted" style="margin-top:6px">~10 min · no weights · do the four as a circuit, 3 rounds. Three times a week beats one long core day.</div>
+      <div class="small" style="margin-top:8px">${I.arms} Planks on your forearms, not the handles — no wrist or grip load.</div>
+    </div>
+    <div class="timeline-block">
+      <h4>${I.core} Circuit <span class="t">3 rounds</span></h4>
+      <p class="small muted" style="margin:2px 0 10px">Quality over time: stop a hold when form breaks, not when the clock says. Tap a move for the demo.</p>
+      ${rows}
+    </div>
+    <div class="section-title">Done? How did it feel</div>
+    <div class="grid2" style="grid-template-columns:1fr 1fr 1fr">
+      <button class="btn" onclick="logCore10('easy')">Too easy</button>
+      <button class="btn primary" onclick="logCore10('right')">About right</button>
+      <button class="btn" onclick="logCore10('hard')">Too hard</button>
+    </div>
+    <p class="hint">Your answer sets the next level — no typing needed.</p>`;
+  document.getElementById("genResult").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function logCore10(feel){
+  const lvl=S.core.level, moves=CORE_LADDER[lvl-1], max=CORE_LADDER.length;
+  /* Its own log type, not "gym": a 10-minute circuit shouldn't count as one of the
+     week's ~4 quality sessions, feed the gym rotation, or trigger the forearm
+     morning-after question (no grip load). It does fill the core dots. */
+  addLogEntry({type:"core10",ts:Date.now(),groups:["core"],exercises:moves.map(m=>m.id),core10:{level:lvl,feel}});
+  let msg;
+  if(feel==="easy"){S.core.level=Math.min(max,lvl+1);S.core.rightStreak=0}
+  else if(feel==="hard"){S.core.level=Math.max(1,lvl-1);S.core.rightStreak=0}
+  else if(++S.core.rightStreak>=2){S.core.level=Math.min(max,lvl+1);S.core.rightStreak=0}
+  const now=S.core.level;
+  msg=now>lvl?`Level ${now} next time`:now<lvl?`Back to level ${now} next time`:feel==="right"&&lvl<max?`Logged — one more like that and you move up`:`Logged — level ${now} again`;
+  save(); updateSpark(); renderWeekStrip();
+  if(document.getElementById("view-tracker").classList.contains("active"))renderTracker();
+  document.getElementById("genResult").innerHTML="";
+  toast("✓ "+msg);
+}
+
+/* ---------- core test ---------- */
+function openCoreTest(){
+  const last=lastCoreTest();
+  const rows=CORE_TESTS.map(t=>`
+    <label class="fld" style="margin-top:12px">${t.label} (${t.unit})</label>
+    <div class="small muted" style="margin:-2px 0 6px">${t.how}</div>
+    <input id="ct_${t.k}" type="number" inputmode="numeric" min="0" step="1" placeholder="${last?`last: ${last[t.k]} ${t.unit}`:t.unit}">`).join("");
+  openConstraintSheet(`
+    <div class="row" style="margin-bottom:4px">
+      <span class="pill grp">${I.core} Core test</span>
+      <button class="btn sm ghost" style="margin-left:auto" onclick="closeSheet()">Close</button>
+    </div>
+    <h2 style="font-size:28px;margin:8px 0 4px">${last?"Retest":"Baseline test"}</h2>
+    <p class="small muted" style="margin:0 0 4px">Fresh, warmed up, not after a session. Rest 2 min between tests. Same order every time so results compare.</p>
+    ${rows}
+    <button class="btn primary block" style="margin-top:16px" onclick="saveCoreTest()">Save results</button>`);
+}
+function saveCoreTest(){
+  const r={ts:Date.now()};
+  for(const t of CORE_TESTS){
+    const v=parseFloat((document.getElementById("ct_"+t.k).value||"").replace(",","."));
+    if(isNaN(v)||v<0){toast("Fill in all four");return}
+    r[t.k]=v;
+  }
+  const wasPriority=corePriority();
+  S.coreTests.push(r); save(); closeSheet(); renderCoreTest();
+  toast(S.coreTests.length===1?"✓ Baseline saved — retest in 4 weeks"
+    :wasPriority&&!corePriority()?"✓ Up 25%+ on all three — core priority off"
+    :"✓ Retest saved");
+}
+function delCoreTest(ts){
+  if(!confirm("Delete this test result?"))return;
+  S.coreTests=S.coreTests.filter(t=>t.ts!==ts); save(); renderCoreTest();
+}
+const pct=x=>(x>=0?"+":"")+Math.round(x*100)+"%";
+function renderCoreTest(){
+  // home nudge (dismissable for this app session)
+  const due=coreTestDue(), home=document.getElementById("coreDue");
+  if(home){
+    home.innerHTML=due&&sessionStorage.getItem("fb.coreDueDismissed")!=="1"?`
+      <div class="card" style="margin:0 0 12px;padding:12px 13px"><div class="row">
+        <span class="small"><b>${due==="baseline"?"Take your baseline core test":"Core retest due"}</b> — 4 quick holds, ~8 min.</span>
+        <button class="btn sm" style="margin-left:auto" onclick="openCoreTest()">Test</button>
+        <button class="btn sm ghost" style="padding:6px 8px" onclick="sessionStorage.setItem('fb.coreDueDismissed','1');renderCoreTest()">✕</button>
+      </div></div>`:"";
+  }
+  const el=document.getElementById("coreTest"); if(!el)return;
+  const t=S.coreTests, last=lastCoreTest(), first=t[0], g=coreGains();
+  const prio=corePriority();
+  const cell=(k,unit)=>{
+    if(!last)return "—";
+    const d=t.length>1&&first[k]>0?` <span class="small" style="color:${last[k]>=first[k]?"var(--txt)":"var(--accent)"}">${pct((last[k]-first[k])/first[k])}</span>`:"";
+    return `${last[k]}<span class="small muted"> ${unit}</span>${d}`;
+  };
+  const next=last?Math.ceil((last.ts+CORE_RETEST_DAYS*DAY-Date.now())/DAY):0;
+  const hist=t.slice().reverse().slice(0,4).map(x=>`<span class="pill" onclick="delCoreTest(${x.ts})" title="Tap to delete">${cDay(x.ts)} · ${x.plank}s / ${sideMin(x)}s / ${x.deadbug}</span>`).join("");
+  el.innerHTML=`<div class="card">
+    <div class="kpi" style="margin-bottom:10px">
+      <div class="box"><div class="n" style="font-size:26px">${cell("plank","s")}</div><div class="l">Plank</div></div>
+      <div class="box"><div class="n" style="font-size:26px">${last?`${last.sideL}/${last.sideR}<span class="small muted"> s</span>`:"—"}</div><div class="l">Side L/R</div></div>
+      <div class="box"><div class="n" style="font-size:26px">${cell("deadbug","")}</div><div class="l">Dead bug</div></div>
+    </div>
+    <div class="small">${!last?"No test yet. Take a baseline so progress is a number, not a feeling."
+      :due==="retest"?`<b style="color:var(--accent)">Retest due.</b>`
+      :`Next retest in ${next} day${next===1?"":"s"}.`}
+      ${g?` Since your first test: plank ${pct(g.plank)}, weak-side plank ${pct(g.side)}, dead bug ${pct(g.deadbug)}.`:""}</div>
+    <div class="small" style="margin-top:8px">${I.core} <b>Core priority ${prio?"on":"off"}</b> — ${prio
+      ?`every generated session includes core until a retest beats your first test by ${Math.round(CORE_GAIN*100)}% on all three.`
+      :`you've beaten your first test by ${Math.round(CORE_GAIN*100)}%+ on all three, so core is back in the normal rotation.`}
+      · Core 10 level ${S.core.level}/${CORE_LADDER.length}</div>
+    ${hist?`<div class="wrap" style="margin-top:10px">${hist}</div>`:""}
+    <button class="btn block" style="margin-top:12px" onclick="openCoreTest()">${last?"Log a retest":"Take baseline test"}</button>
+  </div>`;
+}
+
 /* =========================== NAV =========================== */
 document.querySelectorAll("#nav button").forEach(b=>{
   b.onclick=()=>setView(b.dataset.view);
@@ -1174,7 +1382,7 @@ function setView(v){
   document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.view===v));
   window.scrollTo(0,0);
   if(v==="generate"){renderWeekStrip();renderConstraintBar()}
-  if(v==="tracker"){renderTracker();renderGoals()}
+  if(v==="tracker"){renderTracker();renderGoals();renderCoreTest()}
   if(v==="week")renderWeek();
   if(v==="settings"){renderGear();renderProfile();renderGoalSetup()}
 }
@@ -1345,6 +1553,11 @@ function generate(){
     groups=[...FOCUSES[genFocus].groups];
   }
 
+  // core priority: at least one core move in every session until a retest
+  // shows real improvement — sorting it first guarantees pickMains takes one
+  const corePrio=corePriority();
+  if(corePrio){ if(!groups.includes("core"))groups.push("core"); doneGroupCount.core=-1; }
+
   // main exercise count by time budget (warm ~7, cool ~8)
   const nMain = genDur===45 ? 5 : 7;
   const mains = pickMains(groups, nMain, doneGroupCount, doneEx);
@@ -1359,7 +1572,7 @@ function generate(){
   const sessionGroups=[...new Set(mains.map(m=>m.g))];
   S.lastSession={dur:genDur,focus:genFocus,mains:mains.map(m=>m.id),groups:sessionGroups,ts:Date.now(),ramp:rampSnapshot()};
   save();
-  renderSession(warm,mains,cool,{sport,planned,legLoad,gym,groups,rotated:doneEx.size>0});
+  renderSession(warm,mains,cool,{sport,planned,legLoad,gym,groups,rotated:doneEx.size>0,corePrio});
 }
 
 /* Pick main exercises with weekly rotation:
@@ -1406,6 +1619,7 @@ function renderSession(warm,mains,cool,ctx){
     return `${d.short}: grip week ${i+1} — ${d.stages[i].name}. ${d.stages[i].note}`});
   if(ret)cNotes.push(`Return block, day ${ret} of 21: about 60% of your old loads on every move, stop 3–4 reps short of failure, no max sets. Two sessions a week is the target. Heavy soreness after the first one is normal detraining.`);
   if(matchTomorrow())cNotes.push("Match tomorrow — legs are out; keep it crisp.");
+  if(ctx&&ctx.corePrio)cNotes.push("Core priority: at least one core move every session until your core retest improves 25%.");
   const trained=[...new Set(mains.map(m=>GROUPS[m.g].name))].join(" · ");
   let note="";
   if(genFocus==="auto"){
@@ -1574,6 +1788,7 @@ const LOGMETA={
   running:{label:"Run",dot:"#8c8780",icon:I.run},
   padel:{label:"Padel",dot:"#ffa494",icon:I.padel},
   mobility:{label:"Mobility",dot:"#c9c4bb",icon:I.wave},
+  core10:{label:"Core 10",dot:"#4d4a45",icon:I.core},
 };
 // what counts as legs + conditioning (so the generator can keep legs light)
 const LEGCARDIO=["football_training","football_match","running","padel"];
@@ -1786,7 +2001,7 @@ function confirmGymManual(){
 function renderWeekStrip(){
   const wk=thisWeekLog();
   const cnt={};
-  wk.filter(l=>l.type==="gym").forEach(l=>(l.groups||[]).forEach(g=>cnt[g]=(cnt[g]||0)+1));
+  wk.filter(l=>l.type==="gym"||l.type==="core10").forEach(l=>(l.groups||[]).forEach(g=>cnt[g]=(cnt[g]||0)+1));
   const cardio=wk.filter(l=>isLegCardio(l.type)).length;
   const groups=["chest","shoulders","arms","back","core","legs"];
   // raw trained volume per group (legs also covered by cardio)
@@ -2317,6 +2532,7 @@ function importData(ev){
       S.profile.weightKg??=null; S.profile.heightCm??=null; S.profile.age??=32;
       S.profile.dbMaxKg??=10; S.profile.kbMaxKg??=12;
       seedConstraints();   // older backups predate injury constraints
+      normCore();          // …and the core programme
       // What's in the browser now matches a file you're holding, so this
       // counts as backed up — regardless of when the file was written.
       S.lastBackup=Date.now();
@@ -2474,7 +2690,7 @@ document.querySelectorAll("[data-ic]").forEach(el=>{
 });
 renderGroupTabs(); renderGroupList(); renderFocus(); updateSpark(); renderWeekStrip();
 renderBackupBanner(); renderBackupHint(); renderProfile();
-renderGoals(); renderGoalSetup(); renderConstraintBar();
+renderGoals(); renderGoalSetup(); renderConstraintBar(); renderCoreTest();
 // first open past a review date: ask before anything else
 {const r=liveConstraints().find(reviewDue); if(r)openReview(r.id)}
 // the share route only exists where the OS offers a share sheet (mostly phones)
