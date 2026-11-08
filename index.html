@@ -302,8 +302,8 @@ input:focus,textarea:focus,select:focus{outline:3px solid var(--red);outline-off
 
 /* ---------- week strip & calendar ---------- */
 .wcol{border-radius:0;border:2px solid transparent}
-.wcol.under{border:2px dashed var(--accent);background:transparent}
-.wcol.under .wname{color:var(--accent)}
+.wcol.under{border:2px solid transparent;background:transparent}   /* red label only — a box per group was too loud */
+.wcol.under .wname{color:var(--accent);font-weight:700}
 .wname{font-family:var(--mono);font-size:8.5px;color:var(--txt)}
 .wd{border-radius:0;width:7px;height:7px;background:transparent;border:1.5px solid var(--line)}
 .wd.on{background:var(--red);border-color:var(--line)}
@@ -1805,7 +1805,7 @@ function renderWeekStrip(){
   document.getElementById("weekStrip").innerHTML=`
     <div class="card" style="padding:13px 14px">
       <div class="row" style="margin-bottom:10px"><b style="font-size:13px">This week so far</b>
-        <span class="small muted" style="margin-left:auto">${any?(underN?"dashed = needs work":"trained volume"):"nothing logged yet"}</span></div>
+        <span class="small muted" style="margin-left:auto">${any?(underN?`<span style="color:var(--accent)">red</span> = nothing yet`:"trained volume"):"nothing logged yet"}</span></div>
       <div class="wstrip">${cols}</div>
     </div>`;
 }
